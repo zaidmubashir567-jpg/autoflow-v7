@@ -1,0 +1,20 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>My Leads — AutoFlow Portal</title></head>
+<body><div id="app">Loading…</div>
+<script type="module">
+import { requireAuth, getClientId } from '/shared/auth.js';
+import { clientNav, injectSharedCSS, dataTable, pipelineProgress } from '/shared/ui.js';
+import { getLeads } from '/shared/db.js';
+injectSharedCSS(); await requireAuth('client'); const clientId = await getClientId();
+document.getElementById('app').innerHTML = `${clientNav('My Leads')}<main class="main">
+  <div class="page-header"><h1 class="page-title">My Leads</h1><p class="page-sub">Read-only view of all leads in your campaigns</p></div>
+  <div class="page-body"><div class="card" id="lTable">Loading…</div></div></main>`;
+const leads = await getLeads(clientId);
+const cols = [
+  {key:'business_name',label:'Business',render:(v,r)=>`<div style="font-weight:600">${v}</div><div style="font-size:11px;color:var(--color-text-muted)">${r.city}, ${r.state}</div>`},
+  {key:'niche',label:'Niche',render:v=>v??'—'},
+  {key:'score',label:'Score',render:v=>`<strong>${v}/10</strong>`},
+  {key:'stage',label:'Stage',render:v=>`<span style="font-size:12px;background:var(--color-surface);padding:2px 8px;border-radius:8px">${v?.replace('_',' ')??'—'}</span>`},
+  {key:'email',label:'Contact',render:(v,r)=>v?'✉️ Email found':'📵 Email not found'}
+];
+document.getElementById('lTable').innerHTML = dataTable(cols, leads, {emptyMsg:'No leads yet — your campaign is being set up.', colCount:5});
+</script></body></html>

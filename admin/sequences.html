@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sequences — AutoFlow</title></head>
+<body><div id="app">Loading…</div>
+<script type="module">
+import { requireAuth, getClientId } from '/shared/auth.js';
+import { adminNav, injectSharedCSS, toast, modal, closeModal } from '/shared/ui.js';
+import { supabase } from '/shared/auth.js';
+
+injectSharedCSS();
+await requireAuth('admin');
+const clientId = await getClientId();
+
+document.getElementById('app').innerHTML = `
+  ${adminNav('Sequences')}
+  <main class="main">
+    <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div><h1 class="page-title">Sequences</h1><p class="page-sub">Day 0/3/7/14 email follow-up templates (A/B/C variants)</p></div>
+      <button class="btn btn-primary" onclick="newSeq()">+ New Template</button>
+    </div>
+    <div class="page-body" id="seqBody">Loading…</div>
+  </main>`;
+
+async function load() {
+  const { data } = await supabase.from('sequences').select('*').eq('client_id', clientId).order('day').order('variation');
+  render(data ?? []);
+}
+await load();
+
+function render(seqs) {
+  const days = [0, 3, 7, 14];
+  const dayLabels = {0:'Day 0 — Initial Pitch',3:'Day 3 — Value-Add Bump',7:'Day 7 — Case Study',14:'Day 14 — Breakup Email'};
+  document.getElementById('seqBody').innerHTML = days.map(d => {
+    const rows = seqs.filter(s => s.day === d);
+    const cards = ['A','B','C'].map(v => {
+      const s = rows.find(r => r.variation === v);
+      return `<div class="seq-card ${s?'':'seq-empty'}" onclick="${s?`editSeq('${s.id}')`:`newSeq(${d},'${v}')`}">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+          <span class="var-badge var-${v}">Variant ${v}</span>
+          ${s?`<span style="font-size:11px;color:${s.active?'var(--color-success)':'var(--color-text-muted)'}">${s.active?'Active':'Inactive'}</span>`:''}
+        </div>
+        ${s ? `<div style="font-weight:600;font-size:13px;margin-bottom:6px">${s.subject}</div>
+               <div style="font-size:12px;color:var(--color-text-muted);line-height:1.5">${s.body.substring(0,120)}…</div>`
+             : `<div style="color:var(--color-text-muted);font-size:13px;text-align:center;padding:20px">+ Add Variant ${v}</div>`}
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:24px">
+      <h3 style="font-size:14px;font-weight:700;margin-bottom:12px;color:var(--color-text-muted)">${dayLabels[d]}</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">${cards}</div>
+    </div>`;
+  }).join('');
+}
+
+window.newSeq = function(day=0, variation='A') { showModal(null, day, variation); };
+window.editSeq = async function(id) {
+  const { data } = await supabase.from('sequences').select('*').eq('id', id).single();
+  if (data) showModal(data, data.day, data.variation);
+};
+
+function showModal(seq, day, variation) {
+  modal(seq ? 'Edit Sequence' : `New Sequence — Day ${day} Variant ${variation}`, `
+    <div style="display:grid;gap:12px;font-size:14px">
+      <div><label style="font-size:12px;font-weight:600;color:var(--color-text-muted)">Subject Line</label>
+        <input id="sSubject" value="${seq?.subject??''}" placeholder="e.g. Quick question about {business_name}"
+          style="width:100%;padding:8px;border:1px solid var(--color-border);border-radius:6px;margin-top:4px"></div>
+      <div><label style="font-size:12px;font-weight:600;color:var(--color-text-muted)">Body (supports {business_name}, {city}, {niche})</label>
+        <textarea id="sBody" style="width:100%;padding:8px;border:1px solid var(--color-border);border-radius:6px;min-height:160px;margin-top:4px;font-size:13px;font-family:inherit">${seq?.body??''}</textarea></div>
+    </div>`,
+    [
+      { label: seq ? 'Save' : 'Create', primary: true, action: async () => {
+        const sub = document.getElementById('sSubject').value.trim();
+        const bod = document.getElementById('sBody').value.trim();
+        if (!sub || !bod) { toast('Fill in subject and body','warning'); return; }
+        if (seq) {
+          await supabase.from('sequences').update({subject:sub,body:bod}).eq('id',seq.id);
+        } else {
+          await supabase.from('sequences').insert({client_id:clientId,day,variation,subject:sub,body:bod,active:true});
+        }
+        await load(); closeModal(); toast('Saved ✓','success');
+      }},
+      { label:'Cancel', action: closeModal }
+    ]
+  );
+}
+</script>
+<style>
+  .seq-card{background:var(--color-bg);border:1px solid var(--color-border);border-radius:10px;padding:16px;cursor:pointer;transition:box-shadow .15s;min-height:120px}
+  .seq-card:hover{box-shadow:0 2px 8px rgba(0,0,0,.1)}
+  .seq-empty{background:var(--color-surface);border-style:dashed;display:flex;align-items:center;justify-content:center}
+  .var-badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:700}
+  .var-A{background:#dbeafe;color:#1d4ed8}.var-B{background:#d1fae5;color:#065f46}.var-C{background:#ede9fe;color:#7c3aed}
+</style>
+</body></html>

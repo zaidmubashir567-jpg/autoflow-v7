@@ -1,0 +1,35 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Campaigns — AutoFlow Portal</title></head>
+<body><div id="app">Loading…</div>
+<script type="module">
+import { requireAuth, getClientId } from '/shared/auth.js';
+import { clientNav, injectSharedCSS, nodeProgress } from '/shared/ui.js';
+import { getRecentRuns, subscribeToRun } from '/shared/db.js';
+injectSharedCSS(); await requireAuth('client'); const clientId = await getClientId();
+document.getElementById('app').innerHTML = `${clientNav('Campaigns')}<main class="main">
+  <div class="page-header"><h1 class="page-title">Campaigns</h1><p class="page-sub">Live pipeline progress for your active campaigns</p></div>
+  <div class="page-body" id="campaigns">Loading…</div></main>`;
+const runs = await getRecentRuns(clientId, 10);
+const el = document.getElementById('campaigns');
+if (!runs.length) { el.innerHTML = '<div class="card" style="text-align:center;padding:40px;color:var(--color-text-muted)">No campaigns yet. Your team will start your first campaign soon.</div>'; }
+else {
+  el.innerHTML = runs.map(r=>`<div class="card" style="margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:12px">
+      <div><div style="font-weight:700">${r.city}, ${r.state} — ${r.niche}</div>
+        <div style="font-size:12px;color:var(--color-text-muted)">${new Date(r.created_at).toLocaleDateString()}</div></div>
+      <span class="s-${r.status}" style="font-size:12px;padding:3px 10px;border-radius:10px;font-weight:600">${r.status}</span>
+    </div>
+    <div id="nodes-${r.id}">${nodeProgress(r.current_node, r.status)}</div>
+    <div style="display:flex;gap:20px;margin-top:12px;font-size:13px;color:var(--color-text-muted)">
+      <span>👥 ${r.leads_found??0} leads</span><span>✅ ${r.leads_qualified??0} qualified</span>
+      <span>✉️ ${r.emails_sent??0} contacted</span>
+    </div>
+  </div>`).join('');
+  runs.filter(r=>r.status==='running').forEach(r => {
+    subscribeToRun(r.id, updated => {
+      document.getElementById(`nodes-${r.id}`).innerHTML = nodeProgress(updated.current_node, updated.status);
+    });
+  });
+}
+</script>
+<style>.s-running{background:#ede9fe;color:#7c3aed}.s-completed{background:#d1fae5;color:#065f46}.s-error{background:#fee2e2;color:#991b1b}</style>
+</body></html>

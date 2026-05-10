@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pipeline — AutoFlow</title>
+</head>
+<body>
+<div id="app">Loading…</div>
+
+<script type="module">
+import { requireAuth, getClientId } from '/shared/auth.js';
+import { adminNav, injectSharedCSS, toast, nodeProgress, modal, closeModal } from '/shared/ui.js';
+import { getClient, createRun, updateRun, subscribeToRun, getTodaySendCount } from '/shared/db.js';
+import { searchPlaces, callAI } from '/shared/api.js';
+import { pickNextOpportunity, shouldAutoFire } from '/brain/scout.js';
+
+injectSharedCSS();
+const auth = await requireAuth('admin');
+const clientId = await getClientId();
+const client   = await getClient(clientId);
+
+// US State list
+const STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY',
+  'LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK',
+  'OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+
+const NICHE_TEMPLATES = [
+  'Dentists','Plumbers','HVAC Companies','Restaurants','Law Firms','Real Estate Agents',
+  'Chiropractors','Auto Repair Shops','Electricians','Landscapers','Gyms & Fitness',
+  'Hair Salons','Veterinarians','Accountants','Insurance Agents'
+];
+
+document.getElementById('app').innerHTML = `
+  ${adminNav('Pipeline')}
+  <main class="main">
+    <div class="page-header">
+      <h1 class="page-title">Run Pipeline</h1>
+      <p class="page-sub">AutoFlow finds businesses, enriches contacts across 10 channels, and sends outreach — you approve the sends.</p>
+    </div>
+    <div class="page-body">
+      <div style="display:grid;grid-template-columns:380px 1fr;gap:24px;align-items:start">
+
+        <!-- Config panel -->
+        <div class="card" id="configPanel">
+          <div class="card-title">Campaign Settings</div>
+
+          <!-- AUTO mode toggle -->
+          <div class="toggle-row" style="margin-bottom:20px">
+            <div>
+              <strong>AUTO Mode</strong>
+              <div style="font-size:12px;color:var(--color-text-muted)">Opportunity Scout picks best city + niche automatically</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="autoMode" onchange="toggleAutoMode(this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <!-- Manual config (hidden in auto mode) -->
+          <div id="manualConfig">
+            <div class="form-group">
+              <label>State</label>
+              <select id="stateSelect">
+                <option value="">Select state…</option>
+                ${STATES.map(s => `<option value="${s}">${s}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label>City</label>
+              <input type="text" id="cityInput" placeholder="e.g. Austin">
+            </div>
+            <div class="form-group">
+              <label>Niche</label>
+              <div style="display:flex;gap:8px">
+                <input type="text" id="nicheInput" placeholder="e.g. Dentists" style="flex:1">
+                <button class="btn" onclick="showNicheTemplates()" title="Quick pick">📋</button>
+              </div>
+              <div id="nicheChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
+            </div>
+          </div>
+
+          <!-- Auto mode display -->
+          <div id="autoConfig" style="display:none">
+            <div style="background:var(--color-surface);border-radius:8px;padding:16px">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+                <div style="font-size:20px">🎯</div>
+                <div style="font-weight:600">Opportunity Scout Active</div>
+              </div>
+              <div id="scoutPreview" style="font-size:13px;color:var(--color-text-muted)">
+                Enable AUTO mode to see the scout's pick
+              </div>
+            </div>
+          </div>
+
+          <div id="sendCapInfo" style="font-size:12px;color:var(--color-text-muted);margin:16px 0;padding:10px;background:var(--color-surface);border-radius:6px">
+            Loading daily send cap info…
+          </div>
+
+          <button class="btn btn-primary" id="runBtn" onclick="startPipeline()" style="width:100%;padding:14px;font-size:15px">
+            ⚡ Run Pipeline
+          </button>
+
+          <div id="approvalBanner" style="display:none;margin-top:16px;padding:14px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;text-align:center">
+            <div style="font-weight:600;margin-bottom:8px">✋ First-batch approval required</div>
+            <div style="font-size:13px;color:#92400e;margin-bottom:12px">Review all email drafts before they send</div>
+            <a href="/admin/pipeline-manager.html" class="btn btn-primary" style="text-decoration:none">Review &amp; Approve Drafts →</a>
+          </div>
+        </div>
+
+        <!-- Live run panel -->
+        <div class="card" id="runPanel">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div class="card-title" style="margin:0">Pipeline Progress</div>
+            <span id="runStatus" class="status-pill">idle</span>
+          </div>
+
+          <div id="nodeList" style="margin-bottom:20px">
+            <div style="color:var(--color-text-muted);font-size:14px;padding:20px;text-align:center">
+              Configure settings and click Run Pipeline to start.
+            </div>
+          </div>
+
+          <div id="runStats" style="display:none">
+            <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);gap:12px">
+              <div class="stat-mini"><div id="sLeads">0</div><div>Leads Found</div></div>
+              <div class="stat-mini"><div id="sQualified">0</div><div>Qualified</div></div>
+              <div class="stat-mini"><div id="sEmails">0</div><div>Emails Found</div></div>
+              <div class="stat-mini"><div id="sSent">0</div><div>Sent</div></div>
+            </div>
+          </div>
+
+          <div id="runLog" style="margin-top:16px;max-height:200px;overflow-y:auto;font-size:12px;
+               font-family:monospace;background:var(--color-surface);border-radius:6px;padding:12px;
+               display:none"></div>
+        </div>
+      </div>
+    </div>
+  </main>`;
+
+// Load daily cap info
+const todaySent = await getTodaySendCount(clientId);
+const cap = client.daily_email_cap ?? 20;
+document.getElementById('sendCapInfo').innerHTML =
+  `📧 Daily send cap: <strong>${todaySent}/${cap}</strong> emails sent today
+   ${todaySent >= cap ? ' — <span style="color:var(--color-danger)">cap reached</span>' : ''}`;
+
+// Niche templates
+window.showNicheTemplates = function() {
+  const chips = document.getElementById('nicheChips');
+  chips.innerHTML = NICHE_TEMPLATES.map(n =>
+    `<button class="chip" onclick="selectNiche('${n}')">${n}</button>`
+  ).join('');
+};
+window.selectNiche = function(n) {
+  document.getElementById('nicheInput').value = n;
+  document.getElementById('nicheChips').innerHTML = '';
+};
+
+window.toggleAutoMode = async function(on) {
+  document.getElementById('manualConfig').style.display = on ? 'none' : 'block';
+  document.getElementById('autoConfig').style.display  = on ? 'block' : 'none';
+
+  if (on) {
+    const scoutEl = document.getElementById('scoutPreview');
+    scoutEl.innerHTML = `<div style="color:var(--color-text-muted);font-size:13px">🔍 Scouting best opportunity…</div>`;
+    try {
+      const pick = await pickNextOpportunity(clientId, {
+        state: client.default_state,
+        cities: client.target_cities ? JSON.parse(client.target_cities) : undefined
+      });
+      scoutEl.innerHTML = `
+        <div style="font-size:13px">
+          <div style="font-weight:600;margin-bottom:6px">Scout recommendation:</div>
+          <div style="margin-bottom:4px">📍 <strong>${pick.niche}</strong> in <strong>${pick.city}, ${pick.state}</strong></div>
+          <div style="color:var(--color-text-muted);font-size:12px">${pick.reason}</div>
+        </div>`;
+      // Store pick for startPipeline
+      window._scoutPick = pick;
+    } catch {
+      scoutEl.innerHTML = `<div style="color:var(--color-text-muted);font-size:12px">Scout unavailable — default rotation will be used</div>`;
+      window._scoutPick = null;
+    }
+  } else {
+    window._scoutPick = null;
+  }
+};
+
+// Start pipeline
+let activeRunId = null;
+let subscription = null;
+
+window.startPipeline = async function() {
+  const autoMode = document.getElementById('autoMode').checked;
+  let city   = document.getElementById('cityInput')?.value?.trim();
+  let state  = document.getElementById('stateSelect')?.value;
+  let niche  = document.getElementById('nicheInput')?.value?.trim();
+
+  if (autoMode) {
+    // Use scout pick or fetch fresh one
+    const pick = window._scoutPick ?? await pickNextOpportunity(clientId, {
+      state: client.default_state,
+      cities: client.target_cities ? JSON.parse(client.target_cities) : undefined
+    });
+    city  = pick.city;
+    state = pick.state;
+    niche = pick.niche;
+  }
+
+  if (!city || !state || !niche) {
+    toast('Please fill in state, city, and niche', 'warning'); return;
+  }
+
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true; btn.textContent = 'Starting…';
+
+  // Create run record
+  const run = await createRun({
+    client_id: clientId, city: city || 'AUTO', state: state || 'AUTO',
+    niche: niche || 'AUTO', status: 'running', auto_mode: autoMode,
+    started_at: new Date().toISOString()
+  });
+  activeRunId = run.id;
+
+  document.getElementById('runStats').style.display = 'block';
+  document.getElementById('runLog').style.display = 'block';
+  document.getElementById('runStatus').textContent = 'running';
+  document.getElementById('runStatus').className = 'status-pill status-running';
+
+  // Subscribe to Realtime updates
+  subscription = subscribeToRun(run.id, onRunUpdate);
+
+  // Trigger Edge Function
+  try {
+    const res = await fetch(`https://ndwvsrtyjnaddrifafqk.supabase.co/functions/v1/run-pipeline`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${(await (await import('/shared/auth.js')).getSession())?.access_token}`
+      },
+      body: JSON.stringify({ run_id: run.id, client_id: clientId, city, state, niche, auto_mode: autoMode })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message ?? 'Pipeline failed to start');
+    }
+  } catch (e) {
+    toast(e.message, 'error');
+    await updateRun(run.id, { status: 'error', error_message: e.message });
+    onRunUpdate({ ...run, status: 'error' });
+    btn.disabled = false; btn.textContent = '⚡ Run Pipeline';
+  }
+};
+
+function onRunUpdate(run) {
+  document.getElementById('nodeList').innerHTML = nodeProgress(run.current_node, run.status);
+  document.getElementById('sLeads').textContent     = run.leads_found     ?? 0;
+  document.getElementById('sQualified').textContent = run.leads_qualified ?? 0;
+  document.getElementById('sEmails').textContent    = run.emails_found    ?? 0;
+  document.getElementById('sSent').textContent      = run.emails_sent     ?? 0;
+  document.getElementById('runStatus').textContent  = run.status;
+  document.getElementById('runStatus').className    = `status-pill status-${run.status}`;
+
+  appendLog(`[${run.current_node ?? run.status}] leads:${run.leads_found ?? 0} qualified:${run.leads_qualified ?? 0}`);
+
+  if (run.status === 'paused_approval') {
+    document.getElementById('approvalBanner').style.display = 'block';
+    document.getElementById('runBtn').disabled = false;
+    document.getElementById('runBtn').textContent = '⚡ Run Pipeline';
+    toast('Ready for first-batch approval', 'warning');
+  }
+
+  if (run.status === 'completed' || run.status === 'completed_empty' || run.status === 'error') {
+    subscription?.unsubscribe();
+    document.getElementById('runBtn').disabled = false;
+    document.getElementById('runBtn').textContent = '⚡ Run Pipeline';
+    const msg = run.status === 'error' ? run.error_message : `Done! ${run.emails_sent ?? 0} emails queued.`;
+    toast(msg, run.status === 'error' ? 'error' : 'success');
+  }
+}
+
+function appendLog(msg) {
+  const log = document.getElementById('runLog');
+  log.innerHTML += `<div>${new Date().toLocaleTimeString()} — ${msg}</div>`;
+  log.scrollTop = log.scrollHeight;
+}
+</script>
+
+<style>
+  .form-group { margin-bottom:16px; }
+  .form-group label { display:block; font-size:13px; font-weight:600; margin-bottom:6px; color:var(--color-text-muted); }
+  .form-group input, .form-group select { width:100%; padding:10px 12px; border:1px solid var(--color-border);
+    border-radius:var(--radius); font-size:14px; background:var(--color-bg); color:var(--color-text); }
+  .form-group input:focus, .form-group select:focus { outline:none; border-color:var(--color-accent); }
+  .toggle-row { display:flex; justify-content:space-between; align-items:center; }
+  .toggle-switch { position:relative; width:44px; height:24px; flex-shrink:0; }
+  .toggle-switch input { opacity:0; width:0; height:0; }
+  .toggle-slider { position:absolute; inset:0; background:var(--color-border); border-radius:12px; cursor:pointer; transition:.2s; }
+  .toggle-switch input:checked + .toggle-slider { background:var(--color-accent); }
+  .toggle-slider::before { content:''; position:absolute; width:18px; height:18px; left:3px; top:3px;
+    background:#fff; border-radius:50%; transition:.2s; }
+  .toggle-switch input:checked + .toggle-slider::before { transform:translateX(20px); }
+  .chip { padding:4px 10px; border-radius:12px; border:1px solid var(--color-border); font-size:12px;
+          background:var(--color-surface); cursor:pointer; color:var(--color-text); }
+  .chip:hover { background:var(--color-accent); color:#fff; border-color:var(--color-accent); }
+  .stat-mini { text-align:center; padding:10px; background:var(--color-surface); border-radius:8px; }
+  .stat-mini div:first-child { font-size:22px; font-weight:700; }
+  .stat-mini div:last-child  { font-size:11px; color:var(--color-text-muted); }
+  .status-pill { font-size:11px; padding:3px 10px; border-radius:10px; font-weight:600; background:var(--color-surface); }
+  .status-running   { background:#ede9fe; color:#7c3aed; }
+  .status-completed { background:#d1fae5; color:#065f46; }
+  .status-error     { background:#fee2e2; color:#991b1b; }
+  .status-paused_approval { background:#fffbeb; color:#92400e; }
+</style>
+</body>
+</html>

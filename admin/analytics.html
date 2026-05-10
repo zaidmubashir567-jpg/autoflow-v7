@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Analytics — AutoFlow</title></head>
+<body><div id="app">Loading…</div>
+<script type="module">
+import { requireAuth, getClientId } from '/shared/auth.js';
+import { adminNav, injectSharedCSS, statCard, priorityBadge, toast } from '/shared/ui.js';
+import { getRunHistory, getWeeklyStats, getNichePerformance, getVariationStats } from '/shared/db.js';
+import { getRecommendations, triggerLearn } from '/brain/learner.js';
+
+injectSharedCSS();
+await requireAuth('admin');
+const clientId = await getClientId();
+
+document.getElementById('app').innerHTML = `
+  ${adminNav('Analytics')}
+  <main class="main">
+    <div class="page-header"><h1 class="page-title">Analytics</h1>
+      <p class="page-sub">Period-over-period performance · A/B/C winner tracking · Niche performance</p></div>
+    <div class="page-body">
+      <div class="stats-grid" id="statsGrid" style="margin-bottom:24px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+        <div class="card"><div class="card-title">Weekly Contact Rate (last 8 weeks)</div><div id="weeklyChart"></div></div>
+        <div class="card"><div class="card-title">A/B/C Variation Performance</div><div id="varChart"></div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div class="card"><div class="card-title">Niche Performance</div><div id="nicheTable"></div></div>
+        <div class="card"><div class="card-title">AI Recommendations</div><div id="aiRecs"></div></div>
+      </div>
+    </div>
+  </main>`;
+
+const [history, weekly, niches, varStats, liveRecs] = await Promise.all([
+  getRunHistory(clientId, 20),
+  getWeeklyStats(clientId, 8),
+  getNichePerformance(clientId),
+  getVariationStats(clientId),
+  getRecommendations(clientId).catch(() => [])
+]);
+
+// Top stats
+const avgContact = history.length ? (history.reduce((s,r)=>s+(r.contact_rate??0),0)/history.length).toFixed(1) : 0;
+const avgReply   = history.length ? (history.reduce((s,r)=>s+(r.reply_rate??0),0)/history.length).toFixed(1) : 0;
+const totalRuns  = history.length;
+const bestGrade  = history.reduce((best,r) => (!best || (r.grade < best)) ? r.grade : best, null) ?? '—';
+
+document.getElementById('statsGrid').innerHTML = [
+  statCard('Avg Contact Rate', avgContact+'%', 'target: 55%+', '📡'),
+  statCard('Avg Reply Rate', avgReply+'%', 'all channels', '💬'),
+  statCard('Total Runs', totalRuns, 'all time', '⚡'),
+  statCard('Best Run Grade', bestGrade, 'from Theo', '🏆'),
+].join('');
+
+// Weekly chart (bar chart using divs)
+const maxRate = Math.max(...weekly.map(w=>w.contact_rate??0), 1);
+document.getElementById('weeklyChart').innerHTML = weekly.length === 0
+  ? '<p style="color:var(--color-text-muted);font-size:13px">No data yet.</p>'
+  : `<div style="display:flex;gap:8px;align-items:flex-end;height:120px;padding-bottom:8px">
+      ${weekly.reverse().map(w => {
+        const h = Math.max(4, (( w.contact_rate??0) / maxRate) * 110);
+        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+          <span style="font-size:10px;color:var(--color-text-muted)">${(w.contact_rate??0).toFixed(0)}%</span>
+          <div style="width:100%;background:var(--color-accent);opacity:.8;border-radius:4px 4px 0 0;height:${h}px"></div>
+          <span style="font-size:10px;color:var(--color-text-muted)">W${w.week_number}</span>
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="font-size:12px;color:var(--color-text-muted);margin-top:4px">
+      ${weekly.length > 1 ? `Week-over-week: ${((weekly[weekly.length-1].contact_rate??0)-(weekly[0].contact_rate??0)).toFixed(1)}% change` : ''}
+    </div>`;
+
+// Variation chart
+document.getElementById('varChart').innerHTML = Object.entries(varStats).map(([v,s]) => {
+  const rate = s.sent > 0 ? ((s.replied/s.sent)*100).toFixed(1) : 0;
+  const w = Math.min(100, parseFloat(rate) * 3);
+  return `<div style="margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+      <span><strong>Variant ${v}</strong> — ${s.sent} sent</span><span><strong>${rate}%</strong> reply</span>
+    </div>
+    <div style="background:var(--color-border);border-radius:4px;height:10px">
+      <div style="background:var(--color-accent);width:${w}%;height:100%;border-radius:4px"></div>
+    </div>
+  </div>`;
+}).join('') || '<p style="color:var(--color-text-muted);font-size:13px">No sends yet.</p>';
+
+// Niche table
+const nicheMap = {};
+niches.forEach(n => {
+  if (!nicheMap[n.niche_normalized]) nicheMap[n.niche_normalized] = {count:0,contactTotal:0,replyTotal:0};
+  nicheMap[n.niche_normalized].count++;
+  nicheMap[n.niche_normalized].contactTotal += n.contact_rate??0;
+  nicheMap[n.niche_normalized].replyTotal   += n.reply_rate??0;
+});
+const nicheRows = Object.entries(nicheMap).sort((a,b)=>b[1].contactTotal-a[1].contactTotal).slice(0,8);
+document.getElementById('nicheTable').innerHTML = nicheRows.length === 0
+  ? '<p style="color:var(--color-text-muted);font-size:13px">No niche data yet.</p>'
+  : `<table style="width:100%;font-size:13px;border-collapse:collapse">
+      <thead><tr style="color:var(--color-text-muted);font-size:12px">
+        <th style="text-align:left;padding:6px 0">Niche</th><th style="text-align:right">Runs</th>
+        <th style="text-align:right">Contact%</th><th style="text-align:right">Reply%</th>
+      </tr></thead><tbody>
+      ${nicheRows.map(([n,d])=>`<tr style="border-top:1px solid var(--color-border)">
+        <td style="padding:8px 0;font-weight:600">${n}</td>
+        <td style="text-align:right">${d.count}</td>
+        <td style="text-align:right;color:var(--color-success)">${(d.contactTotal/d.count).toFixed(1)}%</td>
+        <td style="text-align:right">${(d.replyTotal/d.count).toFixed(1)}%</td>
+      </tr>`).join('')}
+      </tbody></table>`;
+
+// AI Recommendations — use live brain/learner.js P1-P5, fall back to static
+const recs = liveRecs.length > 0 ? liveRecs : [
+  parseFloat(avgContact) < 35
+    ? {priority:'P1', title:'Low contact rate', detail:'Below 35% — check Hunter.io key and Apollo fallback in enrich-lead Edge Function.'}
+    : {priority:'P1', title:'Contact rate healthy', detail:`At ${avgContact}% — above the 35% baseline.`},
+  Object.values(varStats).some(s=>s.sent<10)
+    ? {priority:'P2', title:'Low A/B send volume', detail:'Run more pipeline cycles to get statistically significant variation data.'}
+    : null,
+  (() => { const bv = Object.entries(varStats).sort((a,b)=>(b[1].replied/Math.max(b[1].sent,1))-(a[1].replied/Math.max(a[1].sent,1)))[0]; return bv ? {priority:'P3', title:`Variant ${bv[0]} top performer`, detail:'Consider weighting it 60% in rotation via Sequences.'} : null; })(),
+  nicheRows.length > 0 ? {priority:'P4', title:`${nicheRows[0][0]} your best niche`, detail:'Run more campaigns there — higher reply rate than average.'} : null,
+  {priority:'P5', title:'Run learn engine', detail:'Click to trigger A/B analysis and prompt rewrite now.', action:'learn'}
+].filter(Boolean);
+
+document.getElementById('aiRecs').innerHTML = recs.map(r=>
+  `<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--color-border)">
+    ${priorityBadge(r.priority ?? r.p)}
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:600;margin-bottom:2px">${r.title ?? r.text}</div>
+      ${r.detail ? `<div style="font-size:12px;color:var(--color-text-muted);line-height:1.5">${r.detail}</div>` : ''}
+      ${r.action === 'learn' ? `<button class="btn btn-sm" onclick="runLearnEngine()" style="margin-top:6px;font-size:12px">Run Learn Engine</button>` : ''}
+      ${r.action === 'view_sequences' ? `<a href="/admin/sequences.html" class="btn btn-sm" style="margin-top:6px;font-size:12px;text-decoration:none">View Sequences</a>` : ''}
+      ${r.action === 'run_pipeline' ? `<a href="/admin/pipeline.html" class="btn btn-sm" style="margin-top:6px;font-size:12px;text-decoration:none">Run Pipeline</a>` : ''}
+    </div>
+  </div>`
+).join('');
+
+// Also add a "Run Learn Engine" button in the card header
+document.querySelector('#aiRecs').closest('.card').querySelector('.card-title').innerHTML =
+  `AI Recommendations <button class="btn btn-sm" id="learnBtn" onclick="runLearnEngine()" style="font-size:11px;float:right">🧠 Refresh</button>`;
+
+window.runLearnEngine = async function() {
+  const btn = document.getElementById('learnBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  try {
+    await triggerLearn(clientId, 'manual');
+    toast('Learn engine ran — refreshing recommendations…', 'success');
+    setTimeout(() => location.reload(), 2000);
+  } catch {
+    toast('Learn engine failed — check Edge Function logs', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🧠 Refresh'; }
+  }
+};
+</script>
+</body></html>

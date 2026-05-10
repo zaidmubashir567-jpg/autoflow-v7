@@ -1,0 +1,27 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Proposals — AutoFlow</title></head>
+<body><div id="app">Loading…</div>
+<script type="module">
+import { requireAuth, getClientId } from '/shared/auth.js';
+import { adminNav, injectSharedCSS, toast, dataTable, modal, closeModal } from '/shared/ui.js';
+import { supabase } from '/shared/auth.js';
+injectSharedCSS(); await requireAuth('admin'); const clientId = await getClientId();
+document.getElementById('app').innerHTML = `${adminNav('Proposals')}<main class="main">
+  <div class="page-header"><h1 class="page-title">Proposals</h1><p class="page-sub">Oliver-generated proposals — $400–$1,000 website redesigns</p></div>
+  <div class="page-body"><div class="card" id="pTable">Loading…</div></div></main>`;
+const { data } = await supabase.from('proposals').select('*, leads(business_name,city,niche)').eq('client_id', clientId).order('created_at',{ascending:false});
+const cols = [
+  {key:'leads',label:'Business',render:v=>`<div style="font-weight:600">${v?.business_name??'—'}</div><div style="font-size:11px;color:var(--color-text-muted)">${v?.city??''}</div>`},
+  {key:'price',label:'Price',render:v=>v?`<strong>$${Number(v).toLocaleString()}</strong>`:'—'},
+  {key:'status',label:'Status',render:v=>`<span class="ps-${v}">${v}</span>`},
+  {key:'created_at',label:'Date',render:v=>new Date(v).toLocaleDateString()},
+  {key:'id',label:'',render:(v,r)=>`<button class="btn" style="font-size:12px;padding:4px 10px" onclick="viewProposal('${v}')">View</button>`}
+];
+document.getElementById('pTable').innerHTML = dataTable(cols, data??[], {emptyMsg:'No proposals yet.', colCount:5});
+window.viewProposal = function(id) {
+  const p = (data??[]).find(x=>x.id===id); if(!p) return;
+  modal(p.leads?.business_name??'Proposal', `<pre style="white-space:pre-wrap;font-size:13px;line-height:1.6">${p.content}</pre>`,
+    [{label:'Close',action:closeModal}]);
+};
+</script>
+<style>.ps-draft{color:var(--color-text-muted)}.ps-sent{color:var(--color-accent);font-weight:600}.ps-accepted{color:var(--color-success);font-weight:600}.ps-rejected{color:var(--color-danger)}</style>
+</body></html>

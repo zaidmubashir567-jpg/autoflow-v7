@@ -1,0 +1,32 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Reports — AutoFlow Portal</title></head>
+<body><div id="app">Loading…</div>
+<script type="module">
+import { requireAuth, getClientId } from '/shared/auth.js';
+import { clientNav, injectSharedCSS, statCard } from '/shared/ui.js';
+import { getRunHistory, getWeeklyStats } from '/shared/db.js';
+injectSharedCSS(); await requireAuth('client'); const clientId = await getClientId();
+document.getElementById('app').innerHTML = `${clientNav('Reports')}<main class="main">
+  <div class="page-header"><h1 class="page-title">Reports</h1><p class="page-sub">Auto-updating campaign performance — refreshes hourly</p></div>
+  <div class="page-body">
+    <div class="stats-grid" id="sg" style="margin-bottom:24px"></div>
+    <div class="card"><div class="card-title">Campaign History</div><div id="hist"></div></div>
+  </div></main>`;
+const [history, weekly] = await Promise.all([getRunHistory(clientId,20), getWeeklyStats(clientId,8)]);
+const avgC = history.length?(history.reduce((s,r)=>s+(r.contact_rate??0),0)/history.length).toFixed(1):0;
+const avgR = history.length?(history.reduce((s,r)=>s+(r.reply_rate??0),0)/history.length).toFixed(1):0;
+document.getElementById('sg').innerHTML = [
+  statCard('Avg Contact Rate',avgC+'%','email + channels','📡'),
+  statCard('Avg Reply Rate',avgR+'%','interested leads','💬'),
+  statCard('Total Campaigns',history.length,'','⚡'),
+].join('');
+document.getElementById('hist').innerHTML = history.length===0
+  ? '<p style="color:var(--color-text-muted);font-size:14px">No campaign data yet.</p>'
+  : history.map(r=>`<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--color-border);font-size:14px">
+      <div><strong>${r.city??''}, ${r.state??''}</strong> · ${r.niche??''}</div>
+      <div style="display:flex;gap:16px;color:var(--color-text-muted);font-size:13px">
+        <span>Contact: ${r.contact_rate??0}%</span>
+        <span>Reply: ${r.reply_rate??0}%</span>
+        <span>${new Date(r.created_at).toLocaleDateString()}</span>
+      </div>
+    </div>`).join('');
+</script></body></html>

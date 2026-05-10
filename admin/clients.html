@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Clients — AutoFlow</title></head>
+<body><div id="app">Loading…</div>
+<script type="module">
+import { requireAuth, getClientId } from '/shared/auth.js';
+import { adminNav, injectSharedCSS, toast, modal, closeModal, dataTable } from '/shared/ui.js';
+import { getAllClients, updateClient } from '/shared/db.js';
+import { supabase } from '/shared/auth.js';
+
+injectSharedCSS();
+await requireAuth('admin');
+
+document.getElementById('app').innerHTML = `
+  ${adminNav('Clients')}
+  <main class="main">
+    <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div><h1 class="page-title">Clients</h1><p class="page-sub">Multi-tenant client management</p></div>
+      <button class="btn btn-primary" onclick="newClient()">+ Add Client</button>
+    </div>
+    <div class="page-body">
+      <div class="card" id="clientsTable">Loading…</div>
+    </div>
+  </main>`;
+
+let clients = await getAllClients();
+renderClients();
+
+function renderClients() {
+  const cols = [
+    { key:'name', label:'Name', render:(v,r)=>`<div style="font-weight:600">${v}</div><div style="font-size:11px;color:var(--color-text-muted)">${r.email??''}</div>` },
+    { key:'plan', label:'Plan', render:v=>`<span class="plan-badge plan-${v}">${v}</span>` },
+    { key:'ai_model', label:'AI Model', render:v=>`<span style="font-size:12px;font-family:monospace">${v}</span>` },
+    { key:'active', label:'Status', render:v=>v?'<span style="color:var(--color-success);font-weight:600">Active</span>':'<span style="color:var(--color-text-muted)">Inactive</span>' },
+    { key:'created_at', label:'Created', render:v=>new Date(v).toLocaleDateString() },
+    { key:'id', label:'', render:(v,r)=>`<button class="btn" style="font-size:12px;padding:4px 10px" onclick="editClient('${v}')">Edit</button>` }
+  ];
+  document.getElementById('clientsTable').innerHTML = dataTable(cols, clients, {
+    emptyMsg:'No clients yet. Add your first client to get started.', colCount:6
+  });
+}
+
+window.newClient = function() {
+  showClientModal(null);
+};
+
+window.editClient = function(id) {
+  const c = clients.find(c=>c.id===id);
+  if (c) showClientModal(c);
+};
+
+function showClientModal(client) {
+  const isEdit = !!client;
+  modal(isEdit ? `Edit: ${client.name}` : 'New Client', `
+    <div style="display:grid;gap:12px;font-size:14px">
+      <div><label style="font-size:12px;font-weight:600;color:var(--color-text-muted)">Name</label>
+        <input id="cName" value="${client?.name??''}" style="width:100%;padding:8px;border:1px solid var(--color-border);border-radius:6px;margin-top:4px"></div>
+      <div><label style="font-size:12px;font-weight:600;color:var(--color-text-muted)">Email</label>
+        <input id="cEmail" type="email" value="${client?.email??''}" style="width:100%;padding:8px;border:1px solid var(--color-border);border-radius:6px;margin-top:4px"></div>
+      <div><label style="font-size:12px;font-weight:600;color:var(--color-text-muted)">Plan</label>
+        <select id="cPlan" style="width:100%;padding:8px;border:1px solid var(--color-border);border-radius:6px;margin-top:4px">
+          <option value="entry" ${client?.plan==='entry'?'selected':''}>Entry — $400/mo</option>
+          <option value="growth" ${client?.plan==='growth'?'selected':''}>Growth — $700/mo</option>
+          <option value="agency" ${client?.plan==='agency'?'selected':''}>Agency — $1,000/mo</option>
+        </select></div>
+      <div><label style="font-size:12px;font-weight:600;color:var(--color-text-muted)">AI Model</label>
+        <select id="cModel" style="width:100%;padding:8px;border:1px solid var(--color-border);border-radius:6px;margin-top:4px">
+          <option value="gemini-1.5-flash" ${client?.ai_model==='gemini-1.5-flash'?'selected':''}>Gemini 1.5 Flash</option>
+          <option value="gemini-1.5-pro" ${client?.ai_model==='gemini-1.5-pro'?'selected':''}>Gemini 1.5 Pro</option>
+          <option value="claude-opus-4-6" ${client?.ai_model?.startsWith('claude')?'selected':''}>Claude Opus 4.6</option>
+          <option value="gpt-4o-mini" ${client?.ai_model?.startsWith('gpt')?'selected':''}>GPT-4o Mini</option>
+        </select></div>
+      <div><label style="font-size:12px;font-weight:600;color:var(--color-text-muted)">Daily Email Cap</label>
+        <input id="cCap" type="number" value="${client?.daily_email_cap??20}" min="1" max="100"
+          style="width:100%;padding:8px;border:1px solid var(--color-border);border-radius:6px;margin-top:4px"></div>
+    </div>`,
+    [
+      { label: isEdit ? 'Save Changes' : 'Create Client', primary: true, action: async () => {
+        const updates = {
+          name: document.getElementById('cName').value.trim(),
+          email: document.getElementById('cEmail').value.trim(),
+          plan: document.getElementById('cPlan').value,
+          ai_model: document.getElementById('cModel').value,
+          daily_email_cap: parseInt(document.getElementById('cCap').value) || 20
+        };
+        if (!updates.name) { toast('Name is required','warning'); return; }
+        if (isEdit) {
+          await updateClient(client.id, updates);
+          clients = clients.map(c=>c.id===client.id?{...c,...updates}:c);
+        } else {
+          const { data: { user } } = await supabase.auth.getUser();
+          const { data, error } = await supabase.from('clients').insert({...updates,user_id:user.id}).select().single();
+          if (error) { toast(error.message,'error'); return; }
+          clients.push(data);
+        }
+        renderClients(); closeModal();
+        toast(isEdit?'Client updated ✓':'Client created ✓','success');
+      }},
+      { label:'Cancel', action: closeModal }
+    ]
+  );
+}
+</script>
+<style>
+  .plan-badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;text-transform:capitalize}
+  .plan-entry{background:#dbeafe;color:#1d4ed8}
+  .plan-growth{background:#d1fae5;color:#065f46}
+  .plan-agency{background:#ede9fe;color:#7c3aed}
+</style>
+</body></html>

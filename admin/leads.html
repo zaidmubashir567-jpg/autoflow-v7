@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Leads — AutoFlow</title>
+</head>
+<body>
+<div id="app">Loading…</div>
+
+<script type="module">
+import { requireAuth, getClientId } from '/shared/auth.js';
+import { adminNav, injectSharedCSS, toast, channelBadge, pipelineProgress, modal, closeModal, dataTable } from '/shared/ui.js';
+import { getLeads, updateLead, setDoNotContact, getChannels } from '/shared/db.js';
+
+injectSharedCSS();
+const auth = await requireAuth('admin');
+const clientId = await getClientId();
+
+document.getElementById('app').innerHTML = `
+  ${adminNav('Leads')}
+  <main class="main">
+    <div class="page-header">
+      <h1 class="page-title">Leads</h1>
+      <p class="page-sub">All qualified leads with contact channels found</p>
+    </div>
+    <div class="page-body">
+      <!-- Filters -->
+      <div class="card" style="margin-bottom:16px;padding:14px">
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+          <input type="text" id="searchInput" placeholder="Search business name…"
+            oninput="filterLeads()" style="padding:8px 12px;border:1px solid var(--color-border);border-radius:6px;font-size:14px;width:240px">
+          <select id="stageFilter" onchange="filterLeads()" style="padding:8px;border:1px solid var(--color-border);border-radius:6px;font-size:14px">
+            <option value="">All stages</option>
+            <option value="new">New</option><option value="contacted">Contacted</option>
+            <option value="replied">Replied</option><option value="interested">Interested</option>
+            <option value="won">Won</option><option value="lost">Lost</option>
+          </select>
+          <select id="emailFilter" onchange="filterLeads()" style="padding:8px;border:1px solid var(--color-border);border-radius:6px;font-size:14px">
+            <option value="">All contact status</option>
+            <option value="has_email">Has email</option>
+            <option value="no_email">No email</option>
+            <option value="dnc">Do Not Contact</option>
+          </select>
+          <span id="leadCount" style="margin-left:auto;font-size:13px;color:var(--color-text-muted)"></span>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="card">
+        <div id="leadsTable">Loading…</div>
+      </div>
+    </div>
+  </main>`;
+
+let allLeads = [];
+let filtered = [];
+
+allLeads = await getLeads(clientId);
+filtered  = [...allLeads];
+renderTable();
+
+window.filterLeads = function() {
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  const stage  = document.getElementById('stageFilter').value;
+  const email  = document.getElementById('emailFilter').value;
+
+  filtered = allLeads.filter(l => {
+    if (search && !l.business_name.toLowerCase().includes(search)) return false;
+    if (stage  && l.stage !== stage) return false;
+    if (email === 'has_email' && !l.email) return false;
+    if (email === 'no_email'  && l.email)  return false;
+    if (email === 'dnc'       && !l.do_not_contact) return false;
+    return true;
+  });
+  renderTable();
+};
+
+function renderTable() {
+  document.getElementById('leadCount').textContent = `${filtered.length} leads`;
+
+  const cols = [
+    { key: 'business_name', label: 'Business',
+      render: (v, r) => `<div style="font-weight:600">${v}</div><div style="font-size:11px;color:var(--color-text-muted)">${r.city}, ${r.state}</div>` },
+    { key: 'niche',  label: 'Niche',  render: v => `<span style="font-size:13px">${v ?? '—'}</span>` },
+    { key: 'score',  label: 'Score',  render: v => `<strong>${v}/10</strong>` },
+    { key: 'email',  label: 'Email',  render: (v, r) => v
+        ? `<span style="font-size:12px">${v}<br><span class="conf-${r.email_confidence}">${r.email_confidence ?? ''}</span></span>`
+        : '<span style="color:var(--color-text-muted)">—</span>' },
+    { key: 'channels', label: 'Channels',
+      render: (_, r) => channelBadge(r.contact_channels ?? []) },
+    { key: 'stage', label: 'Stage',
+      render: v => `<span class="stage-pill stage-${v}">${v?.replace('_',' ') ?? '—'}</span>` },
+    { key: 'do_not_contact', label: 'DNC',
+      render: v => v ? '<span style="color:var(--color-danger);font-weight:600">🚫 DNC</span>' : '' },
+    { key: 'id', label: '',
+      render: (v, r) => `<button class="btn" style="font-size:12px;padding:4px 10px" onclick="openLead('${v}')">View</button>` }
+  ];
+
+  // Fetch channels for display (join already included if using getLeadWithChannels)
+  document.getElementById('leadsTable').innerHTML = dataTable(cols, filtered, {
+    emptyMsg: 'No leads found. Run a pipeline to start finding businesses.',
+    colCount: 8
+  });
+}
+
+window.openLead = async function(leadId) {
+  const lead = allLeads.find(l => l.id === leadId);
+  if (!lead) return;
+  const channels = await getChannels(leadId);
+
+  modal(`${lead.business_name}`, `
+    <div style="font-size:14px">
+      ${pipelineProgress(lead.stage)}
+      <div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><strong>Address:</strong> ${lead.address ?? '—'}</div>
+        <div><strong>Phone:</strong> ${lead.phone ?? '—'}</div>
+        <div><strong>Website:</strong> ${lead.website ? `<a href="${lead.website}" target="_blank">${lead.website}</a>` : '—'}</div>
+        <div><strong>Rating:</strong> ${lead.google_rating ?? '—'} ⭐ (${lead.review_count ?? 0} reviews)</div>
+        <div><strong>Email:</strong> ${lead.email ?? 'Not found'}</div>
+        <div><strong>Confidence:</strong> ${lead.email_confidence ?? '—'} (${lead.email_source ?? '—'})</div>
+      </div>
+      <div style="margin-top:14px">
+        <strong>Contact Channels Found:</strong>
+        <div style="margin-top:8px">${channelBadge(channels)}</div>
+      </div>
+      ${lead.do_not_contact ? '<div style="margin-top:12px;padding:8px;background:#fee2e2;border-radius:6px;color:#991b1b;font-size:13px">🚫 Do Not Contact flag is set — no outreach will be sent</div>' : ''}
+    </div>`,
+    [
+      ...(lead.do_not_contact ? [] : [{ label: '🚫 Set Do Not Contact', action: async () => {
+        await setDoNotContact(leadId);
+        const idx = allLeads.findIndex(l => l.id === leadId);
+        if (idx >= 0) allLeads[idx].do_not_contact = true;
+        filtered = filtered.map(l => l.id === leadId ? { ...l, do_not_contact: true } : l);
+        closeModal(); renderTable();
+        toast('Do Not Contact flag set', 'warning');
+      }}]),
+      { label: 'Close', action: closeModal }
+    ]
+  );
+};
+</script>
+
+<style>
+  .conf-high   { color: var(--color-success); font-weight:600; }
+  .conf-medium { color: var(--color-warning);  font-weight:600; }
+  .conf-low    { color: var(--color-text-muted); }
+  .stage-pill  { font-size:11px; padding:2px 8px; border-radius:10px; background:var(--color-surface);
+                 font-weight:600; white-space:nowrap; }
+  .stage-won  { background:#d1fae5; color:#065f46; }
+  .stage-lost { background:#fee2e2; color:#991b1b; }
+  .stage-interested { background:#ede9fe; color:#7c3aed; }
+</style>
+</body>
+</html>

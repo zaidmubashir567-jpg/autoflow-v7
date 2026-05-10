@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pipeline Manager — AutoFlow</title>
+</head>
+<body>
+<div id="app">Loading…</div>
+
+<script type="module">
+import { requireAuth, getClientId } from '/shared/auth.js';
+import { adminNav, injectSharedCSS, toast, pipelineProgress, classificationBadge, modal, closeModal } from '/shared/ui.js';
+import { getLeads, updateLead, getPendingDrafts, updateDraftStatus, logOutreach } from '/shared/db.js';
+import { subscribeToDrafts } from '/shared/db.js';
+
+injectSharedCSS();
+const auth = await requireAuth('admin');
+const clientId = await getClientId();
+
+const STAGES = ['new','contacted','replied','interested','discovery_call','proposal_sent','negotiation','won','lost'];
+const STAGE_LABELS = {new:'New',contacted:'Contacted',replied:'Replied',interested:'Interested',
+  discovery_call:'Discovery',proposal_sent:'Proposal',negotiation:'Negotiation',won:'Won',lost:'Lost'};
+const STAGE_COLORS = {won:'#10b981',lost:'#ef4444',interested:'#4f46e5',
+  discovery_call:'#8b5cf6',proposal_sent:'#f59e0b',default:'#64748b'};
+
+document.getElementById('app').innerHTML = `
+  ${adminNav('Manager')}
+  <main class="main">
+    <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div>
+        <h1 class="page-title">Pipeline Manager</h1>
+        <p class="page-sub">9-stage kanban · Draft approvals · Reply classifier</p>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn" onclick="setView('kanban')" id="btnKanban">Kanban</button>
+        <button class="btn btn-primary" onclick="setView('drafts')" id="btnDrafts">
+          Drafts <span id="draftCount" class="count-badge">…</span>
+        </button>
+      </div>
+    </div>
+    <div class="page-body">
+      <!-- Kanban view -->
+      <div id="viewKanban">
+        <div class="kanban-board" id="kanbanBoard">Loading…</div>
+      </div>
+      <!-- Drafts view (Human Touchpoint #2) -->
+      <div id="viewDrafts" style="display:none">
+        <div id="draftsContainer">Loading drafts…</div>
+      </div>
+    </div>
+  </main>`;
+
+let allLeads = [];
+let allDrafts = [];
+let currentView = 'kanban';
+
+async function loadAll() {
+  [allLeads, allDrafts] = await Promise.all([
+    getLeads(clientId, { qualified: true }),
+    getPendingDrafts(clientId)
+  ]);
+  document.getElementById('draftCount').textContent = allDrafts.length;
+  renderKanban();
+  renderDrafts();
+}
+await loadAll();
+
+// Realtime: new draft comes in → flash badge
+subscribeToDrafts(clientId, async (newDraft) => {
+  allDrafts.push(newDraft);
+  document.getElementById('draftCount').textContent = allDrafts.length;
+  toast(`New reply from ${newDraft.lead_id} — classification: ${newDraft.classification}`, 'info');
+  renderDrafts();
+});
+
+window.setView = function(v) {
+  currentView = v;
+  document.getElementById('viewKanban').style.display = v === 'kanban' ? 'block' : 'none';
+  document.getElementById('viewDrafts').style.display  = v === 'drafts'  ? 'block' : 'none';
+  document.getElementById('btnKanban').className = v === 'kanban' ? 'btn btn-primary' : 'btn';
+  document.getElementById('btnDrafts').className  = v === 'drafts'  ? 'btn btn-primary' : 'btn';
+};
+
+// ── KANBAN ──────────────────────────────────────────────────
+function renderKanban() {
+  const board = document.getElementById('kanbanBoard');
+  const byStage = {};
+  STAGES.forEach(s => byStage[s] = []);
+  allLeads.forEach(l => { if (byStage[l.stage]) byStage[l.stage].push(l); });
+
+  board.innerHTML = STAGES.map(s => {
+    const leads = byStage[s];
+    const col = STAGE_COLORS[s] ?? STAGE_COLORS.default;
+    const cards = leads.map(l => `
+      <div class="kanban-card" onclick="openLeadModal('${l.id}')">
+        <div style="font-weight:600;font-size:13px;margin-bottom:4px">${l.business_name}</div>
+        <div style="font-size:11px;color:var(--color-text-muted)">${l.city}, ${l.state} · ${l.niche}</div>
+        <div style="font-size:11px;margin-top:6px">Score: <strong>${l.score}/10</strong>
+          ${l.email ? '✉️' : ''}${l.do_not_contact ? ' 🚫' : ''}
+        </div>
+      </div>`).join('') || `<div style="font-size:12px;color:var(--color-text-muted);padding:8px">Empty</div>`;
+
+    return `<div class="kanban-col">
+      <div class="kanban-header" style="border-top:3px solid ${col}">
+        <span style="font-weight:700;font-size:13px">${STAGE_LABELS[s]}</span>
+        <span class="count-badge">${leads.length}</span>
+      </div>
+      <div class="kanban-cards">${cards}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── DRAFT APPROVALS (Human Touchpoint #2) ───────────────────
+function renderDrafts() {
+  const container = document.getElementById('draftsContainer');
+  if (allDrafts.length === 0) {
+    container.innerHTML = `
+      <div style="text-align:center;padding:60px;color:var(--color-text-muted)">
+        <div style="font-size:40px;margin-bottom:12px">✅</div>
+        <div style="font-size:16px;font-weight:600">All caught up</div>
+        <div style="font-size:14px;margin-top:4px">No reply drafts waiting for approval</div>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <div style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:15px;font-weight:600">
+        ${allDrafts.length} reply draft${allDrafts.length > 1 ? 's' : ''} waiting for approval
+      </div>
+    </div>
+    ${allDrafts.map((d,i) => `
+    <div class="draft-card" id="draft-${d.id}">
+      <div class="draft-header">
+        <div>
+          <span class="lead-name">${d.leads?.business_name ?? 'Lead'}</span>
+          ${classificationBadge(d.classification)}
+        </div>
+        <div style="font-size:12px;color:var(--color-text-muted)">${new Date(d.reply_received_at).toLocaleString()}</div>
+      </div>
+      <div class="draft-body">
+        <div class="draft-col">
+          <div class="draft-label">📥 Their Reply</div>
+          <div class="draft-text reply-text">${escHtml(d.reply_text)}</div>
+        </div>
+        <div class="draft-col">
+          <div class="draft-label">✍️ AI Draft Response</div>
+          <textarea class="draft-textarea" id="textarea-${d.id}">${escHtml(d.draft_text)}</textarea>
+        </div>
+      </div>
+      <div class="draft-actions">
+        <button class="btn btn-success" onclick="approveDraft('${d.id}')">✅ Send This Reply</button>
+        <button class="btn" onclick="editDraft('${d.id}')">✏️ Edit Before Sending</button>
+        <button class="btn btn-danger" onclick="rejectDraft('${d.id}')">✕ Don't Reply</button>
+      </div>
+    </div>`).join('')}`;
+}
+
+window.approveDraft = async function(draftId) {
+  const draft = allDrafts.find(d => d.id === draftId);
+  if (!draft) return;
+  await updateDraftStatus(draftId, 'sent');
+  // Move lead to 'replied' stage
+  if (draft.lead_id) await updateLead(draft.lead_id, { stage: 'replied' });
+  allDrafts = allDrafts.filter(d => d.id !== draftId);
+  document.getElementById(`draft-${draftId}`)?.remove();
+  document.getElementById('draftCount').textContent = allDrafts.length;
+  if (allDrafts.length === 0) renderDrafts();
+  toast('Reply sent ✓', 'success');
+};
+
+window.editDraft = function(draftId) {
+  const ta = document.getElementById(`textarea-${draftId}`);
+  if (!ta) return;
+  ta.removeAttribute('disabled');
+  ta.focus();
+  toast('Edit the draft, then click Send', 'info');
+};
+
+window.rejectDraft = async function(draftId) {
+  await updateDraftStatus(draftId, 'rejected');
+  allDrafts = allDrafts.filter(d => d.id !== draftId);
+  document.getElementById(`draft-${draftId}`)?.remove();
+  document.getElementById('draftCount').textContent = allDrafts.length;
+  if (allDrafts.length === 0) renderDrafts();
+  toast("Draft rejected — won't reply", 'info');
+};
+
+window.openLeadModal = function(leadId) {
+  const lead = allLeads.find(l => l.id === leadId);
+  if (!lead) return;
+  modal(`${lead.business_name}`, `
+    <div style="font-size:14px">
+      ${pipelineProgress(lead.stage)}
+      <div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><strong>City:</strong> ${lead.city}, ${lead.state}</div>
+        <div><strong>Niche:</strong> ${lead.niche}</div>
+        <div><strong>Score:</strong> ${lead.score}/10</div>
+        <div><strong>Email:</strong> ${lead.email ?? 'Not found'}</div>
+        <div><strong>Stage:</strong> ${STAGE_LABELS[lead.stage]}</div>
+        <div><strong>Do Not Contact:</strong> ${lead.do_not_contact ? '🚫 Yes' : 'No'}</div>
+      </div>
+      <div style="margin-top:16px">
+        <label style="font-size:13px;font-weight:600">Move to stage:</label>
+        <select id="stageSelect" style="width:100%;margin-top:6px;padding:8px;border:1px solid var(--color-border);border-radius:6px">
+          ${STAGES.map(s => `<option value="${s}" ${s===lead.stage?'selected':''}>${STAGE_LABELS[s]}</option>`).join('')}
+        </select>
+      </div>
+    </div>`,
+    [
+      { label: 'Update Stage', primary: true, action: async () => {
+        const newStage = document.getElementById('stageSelect').value;
+        await updateLead(leadId, { stage: newStage });
+        const idx = allLeads.findIndex(l => l.id === leadId);
+        if (idx >= 0) allLeads[idx].stage = newStage;
+        renderKanban();
+        closeModal();
+        toast(`Moved to ${STAGE_LABELS[newStage]}`, 'success');
+      }},
+      { label: 'Cancel', action: closeModal }
+    ]
+  );
+};
+
+function escHtml(s) {
+  return (s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+
+<style>
+  .kanban-board { display:flex; gap:12px; overflow-x:auto; padding-bottom:16px; }
+  .kanban-col { min-width:180px; flex-shrink:0; }
+  .kanban-header { display:flex; justify-content:space-between; align-items:center;
+                   padding:10px 12px; background:var(--color-surface); border-radius:8px 8px 0 0;
+                   margin-bottom:8px; }
+  .kanban-cards { display:flex; flex-direction:column; gap:8px; }
+  .kanban-card { background:var(--color-bg); border:1px solid var(--color-border); border-radius:8px;
+                 padding:12px; cursor:pointer; transition:box-shadow .15s; }
+  .kanban-card:hover { box-shadow:0 2px 8px rgba(0,0,0,.1); }
+  .count-badge { background:var(--color-accent); color:#fff; font-size:11px; font-weight:700;
+                 padding:2px 7px; border-radius:10px; }
+  /* Draft cards */
+  .draft-card { background:var(--color-bg); border:1px solid var(--color-border); border-radius:12px;
+                padding:20px; margin-bottom:16px; box-shadow:var(--shadow); }
+  .draft-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+  .lead-name { font-size:16px; font-weight:700; margin-right:10px; }
+  .draft-body { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px; }
+  .draft-col { display:flex; flex-direction:column; gap:6px; }
+  .draft-label { font-size:12px; font-weight:600; color:var(--color-text-muted); }
+  .draft-text { font-size:13px; line-height:1.6; background:var(--color-surface); padding:12px;
+                border-radius:6px; white-space:pre-wrap; }
+  .draft-textarea { font-size:13px; line-height:1.6; background:var(--color-surface); padding:12px;
+                    border-radius:6px; border:1px solid var(--color-border); resize:vertical;
+                    min-height:120px; font-family:inherit; width:100%; }
+  .draft-actions { display:flex; gap:10px; flex-wrap:wrap; }
+</style>
+</body>
+</html>

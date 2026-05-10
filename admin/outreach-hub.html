@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Outreach Hub — AutoFlow</title>
+</head>
+<body>
+<div id="app">Loading…</div>
+
+<script type="module">
+import { requireAuth, getClientId } from '/shared/auth.js';
+import { adminNav, injectSharedCSS, toast, channelBadge } from '/shared/ui.js';
+import { getManualQueue, updateQueueItemStatus, getLeads, getTodaySendCount } from '/shared/db.js';
+import { getClient } from '/shared/db.js';
+
+injectSharedCSS();
+const auth = await requireAuth('admin');
+const clientId = await getClientId();
+
+document.getElementById('app').innerHTML = `
+  ${adminNav('Outreach')}
+  <main class="main">
+    <div class="page-header">
+      <h1 class="page-title">Outreach Hub</h1>
+      <p class="page-sub">Unified 10-channel view · Manual DM queue · Daily send status</p>
+    </div>
+    <div class="page-body">
+      <!-- Daily cap bar -->
+      <div class="card" style="margin-bottom:16px;padding:16px" id="capCard">Loading…</div>
+
+      <!-- Tabs -->
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button class="btn btn-primary" id="tabDM" onclick="setTab('dm')">
+          Manual DM Queue <span id="dmCount" class="count-badge">…</span>
+        </button>
+        <button class="btn" id="tabAll" onclick="setTab('all')">All Leads · Channels</button>
+      </div>
+
+      <div id="tabContent">Loading…</div>
+    </div>
+  </main>`;
+
+const [dmQueue, client, allLeads, todaySent] = await Promise.all([
+  getManualQueue(clientId),
+  (await import('/shared/db.js')).getClient(clientId),
+  getLeads(clientId, { qualified: true }),
+  getTodaySendCount(clientId)
+]);
+
+const cap = client.daily_email_cap ?? 20;
+const pct = Math.min(100, (todaySent / cap) * 100);
+const capColor = pct >= 100 ? 'var(--color-danger)' : pct >= 80 ? 'var(--color-warning)' : 'var(--color-success)';
+
+document.getElementById('capCard').innerHTML = `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <strong style="font-size:14px">Daily Email Cap</strong>
+    <span style="font-size:13px;color:var(--color-text-muted)">${todaySent}/${cap} sends today</span>
+  </div>
+  <div style="background:var(--color-border);border-radius:6px;height:10px">
+    <div style="background:${capColor};width:${pct}%;height:100%;border-radius:6px;transition:width .5s"></div>
+  </div>
+  <div style="font-size:12px;color:var(--color-text-muted);margin-top:6px">
+    Priority order: FU3 → FU2 → FU1 → new outreach · Resets at midnight
+  </div>`;
+
+document.getElementById('dmCount').textContent = dmQueue.length;
+
+let activeTab = 'dm';
+window.setTab = function(tab) {
+  activeTab = tab;
+  document.getElementById('tabDM').className  = tab === 'dm'  ? 'btn btn-primary' : 'btn';
+  document.getElementById('tabAll').className = tab === 'all' ? 'btn btn-primary' : 'btn';
+  tab === 'dm' ? renderDMQueue() : renderAllLeads();
+};
+
+// ── DM QUEUE (Human Touchpoint #3) ──────────────────────────
+let queue = [...dmQueue];
+
+function renderDMQueue() {
+  const el = document.getElementById('tabContent');
+  if (queue.length === 0) {
+    el.innerHTML = `
+      <div style="text-align:center;padding:60px;color:var(--color-text-muted)">
+        <div style="font-size:40px;margin-bottom:12px">🎉</div>
+        <div style="font-size:16px;font-weight:600">All caught up!</div>
+        <div style="font-size:14px;margin-top:4px">Every lead with a missing email has been contacted via DM</div>
+      </div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div style="font-size:14px;font-weight:600;margin-bottom:12px;color:var(--color-text-muted)">
+      ${queue.length} leads need a DM — takes ~${Math.ceil(queue.length * 0.5)} minutes
+    </div>
+    ${queue.map((item, i) => {
+      const channels = JSON.parse(typeof item.channels_json === 'string' ? item.channels_json : JSON.stringify(item.channels_json ?? {}));
+      const platformBtns = Object.entries(channels).map(([platform, url]) => {
+        const icons = {facebook:'📘',instagram:'📷',linkedin:'💼',yelp:'⭐',whatsapp:'💬'};
+        const icon = icons[platform] ?? '🔗';
+        return url ? `<a href="${url}" target="_blank" class="btn" style="font-size:12px;padding:6px 12px;text-decoration:none">
+          ${icon} Open ${platform.charAt(0).toUpperCase()+platform.slice(1)}
+        </a>` : '';
+      }).filter(Boolean).join('');
+
+      return `<div class="dm-card" id="dm-${item.id}">
+        <div class="dm-header">
+          <div>
+            <span style="font-weight:700;font-size:15px">${item.leads?.business_name ?? 'Business'}</span>
+            <span style="font-size:12px;color:var(--color-text-muted);margin-left:8px">${item.leads?.city ?? ''} · ${item.leads?.niche ?? ''} · Score: ${item.leads?.score ?? '?'}/10</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-success" style="font-size:13px" onclick="markDMSent('${item.id}')">✓ Sent</button>
+            <button class="btn" style="font-size:13px" onclick="skipDM('${item.id}')">Skip</button>
+          </div>
+        </div>
+        <div style="background:var(--color-surface);border-radius:8px;padding:14px;margin:12px 0;font-size:13px;line-height:1.6;white-space:pre-wrap">${item.dm_script}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <span style="font-size:12px;color:var(--color-text-muted)">Open platform:</span>
+          ${platformBtns || '<span style="font-size:12px;color:var(--color-text-muted)">No social links found</span>'}
+        </div>
+      </div>`;
+    }).join('')}`;
+}
+
+window.markDMSent = async function(itemId) {
+  await updateQueueItemStatus(itemId, 'sent');
+  queue = queue.filter(q => q.id !== itemId);
+  document.getElementById(`dm-${itemId}`)?.remove();
+  document.getElementById('dmCount').textContent = queue.length;
+  if (queue.length === 0) renderDMQueue();
+  toast('Marked as sent ✓', 'success');
+};
+
+window.skipDM = async function(itemId) {
+  await updateQueueItemStatus(itemId, 'skipped');
+  queue = queue.filter(q => q.id !== itemId);
+  document.getElementById(`dm-${itemId}`)?.remove();
+  document.getElementById('dmCount').textContent = queue.length;
+  if (queue.length === 0) renderDMQueue();
+};
+
+// ── ALL LEADS with channel view ──────────────────────────────
+function renderAllLeads() {
+  const el = document.getElementById('tabContent');
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px">
+      ${allLeads.map(l => `
+        <div class="card" style="padding:16px">
+          <div style="font-weight:600;margin-bottom:4px">${l.business_name}</div>
+          <div style="font-size:12px;color:var(--color-text-muted);margin-bottom:10px">${l.city}, ${l.state} · ${l.niche} · Score ${l.score}/10</div>
+          <div style="margin-bottom:8px">${channelBadge(l.contact_channels ?? [])}</div>
+          <div style="font-size:12px;color:var(--color-text-muted)">
+            ${l.email ? `✉️ ${l.email} (${l.email_confidence ?? '?'})` : '📧 No email found'}
+            ${l.do_not_contact ? ' · 🚫 DNC' : ''}
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+renderDMQueue();
+</script>
+
+<style>
+  .count-badge { background:var(--color-accent);color:#fff;font-size:11px;font-weight:700;
+                 padding:2px 7px;border-radius:10px;margin-left:4px; }
+  .dm-card { background:var(--color-bg);border:1px solid var(--color-border);border-radius:12px;
+             padding:20px;margin-bottom:12px;box-shadow:var(--shadow); }
+  .dm-header { display:flex;justify-content:space-between;align-items:flex-start; }
+</style>
+</body>
+</html>

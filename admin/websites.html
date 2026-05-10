@@ -1,0 +1,21 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Websites — AutoFlow</title></head>
+<body><div id="app">Loading…</div>
+<script type="module">
+import { requireAuth, getClientId } from '/shared/auth.js';
+import { adminNav, injectSharedCSS, toast, dataTable } from '/shared/ui.js';
+import { supabase } from '/shared/auth.js';
+injectSharedCSS(); await requireAuth('admin'); const clientId = await getClientId();
+document.getElementById('app').innerHTML = `${adminNav('Websites')}<main class="main">
+  <div class="page-header"><h1 class="page-title">Websites</h1><p class="page-sub">Sofia-generated redesigns deployed to Vercel</p></div>
+  <div class="page-body"><div class="card" id="wTable">Loading…</div></div></main>`;
+const { data } = await supabase.from('websites').select('*, leads(business_name,city,niche)').eq('client_id', clientId).order('created_at',{ascending:false});
+const cols = [
+  {key:'leads',label:'Business',render:(v)=>`<div style="font-weight:600">${v?.business_name??'—'}</div><div style="font-size:11px;color:var(--color-text-muted)">${v?.city??''} · ${v?.niche??''}</div>`},
+  {key:'deploy_status',label:'Status',render:v=>`<span class="ds-${v}">${v}</span>`},
+  {key:'vercel_url',label:'URL',render:v=>v?`<a href="${v}" target="_blank" style="font-size:13px;color:var(--color-accent)">${v}</a>`:'—'},
+  {key:'created_at',label:'Created',render:v=>new Date(v).toLocaleDateString()}
+];
+document.getElementById('wTable').innerHTML = dataTable(cols, data??[], {emptyMsg:'No websites yet — run a pipeline to generate redesigns.', colCount:4});
+</script>
+<style>.ds-deployed{color:var(--color-success);font-weight:600}.ds-pending{color:var(--color-warning);font-weight:600}.ds-failed{color:var(--color-danger);font-weight:600}</style>
+</body></html>

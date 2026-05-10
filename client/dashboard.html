@@ -1,0 +1,33 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Dashboard — AutoFlow Portal</title></head>
+<body><div id="app">Loading…</div>
+<script type="module">
+import { requireAuth, getClientId } from '/shared/auth.js';
+import { clientNav, injectSharedCSS, statCard, skeleton } from '/shared/ui.js';
+import { getRecentRuns, getLeads, getRunHistory } from '/shared/db.js';
+import { supabase } from '/shared/auth.js';
+injectSharedCSS(); const auth = await requireAuth('client'); const clientId = await getClientId();
+const { data: clientRow } = await supabase.from('clients').select('name,plan').eq('portal_user_id', auth.user.id).single();
+document.getElementById('app').innerHTML = `${clientNav('Dashboard')}<main class="main">
+  <div class="page-header"><h1 class="page-title">Welcome back${clientRow?.name?' to '+clientRow.name:''}</h1>
+    <p class="page-sub">Your AutoFlow campaign results — updated in real time</p></div>
+  <div class="page-body">
+    <div class="stats-grid" id="statsGrid">${skeleton(1)}</div>
+    <div style="margin-top:24px" class="card"><div class="card-title">Recent Activity</div><div id="activity">${skeleton(3)}</div></div>
+  </div></main>`;
+const [runs, history] = await Promise.all([getRecentRuns(clientId,3), getRunHistory(clientId,10)]);
+const totalLeads = history.reduce((s,r)=>s+(r.leads_found??0),0);
+const totalQualified = history.reduce((s,r)=>s+(r.leads_qualified??0),0);
+const avgContact = history.length?(history.reduce((s,r)=>s+(r.contact_rate??0),0)/history.length).toFixed(1):0;
+document.getElementById('statsGrid').innerHTML = [
+  statCard('Leads Found',totalLeads,'all campaigns','👥'),
+  statCard('Qualified',totalQualified,'score ≥ 6','✅'),
+  statCard('Contact Rate',avgContact+'%','emails + DMs','📡'),
+  statCard('Campaigns Run',runs.length,'total','⚡'),
+].join('');
+document.getElementById('activity').innerHTML = runs.length===0
+  ? '<p style="color:var(--color-text-muted);font-size:14px">No campaigns yet. Your team is setting things up.</p>'
+  : runs.map(r=>`<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--color-border);font-size:14px">
+      <div><strong>${r.city}, ${r.state}</strong> · ${r.niche}</div>
+      <div style="color:var(--color-text-muted)">${r.leads_found??0} leads · ${new Date(r.created_at).toLocaleDateString()}</div>
+    </div>`).join('');
+</script></body></html>
