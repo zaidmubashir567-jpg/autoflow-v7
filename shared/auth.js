@@ -104,6 +104,16 @@ export async function getClientId() {
   return data?.id ?? null;
 }
 
+// ─── Redirect away from login if already authed ─────────────
+// Call on index.html to skip login when session is active
+export async function redirectIfAuthed() {
+  const session = await getSession();
+  if (!session) return;
+  const role = await getUserRole();
+  if (role === 'admin') { location.href = '/admin/dashboard.html'; }
+  else if (role === 'client') { location.href = '/client/dashboard.html'; }
+}
+
 // ─── Auth guard — call at top of every protected page ───────
 // Usage: await requireAuth('admin')  OR  await requireAuth('client')
 export async function requireAuth(requiredRole = 'admin') {
