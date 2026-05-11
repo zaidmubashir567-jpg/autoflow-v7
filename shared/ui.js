@@ -299,7 +299,8 @@ export function injectSharedCSS() {
       --color-text-muted:  #94a3b8;
     }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-           background: var(--color-bg); color: var(--color-text); display: flex; }
+           background: var(--color-bg); color: var(--color-text); display: flex; min-height: 100vh; margin: 0; }
+    #app  { display: flex; flex: 1; min-height: 100vh; }
     /* ── Sidebar ── */
     .sidebar { width: 220px; min-height: 100vh; background: var(--color-primary);
                color: #fff; display: flex; flex-direction: column; flex-shrink: 0; }
