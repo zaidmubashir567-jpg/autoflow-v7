@@ -58,13 +58,14 @@ document.getElementById('app').innerHTML = `
   </main>`;
 
 // Load all data in parallel — brain stats + raw data
+// Each call gets a .catch() so a single failing table never blanks the whole page
 const [runs, history, drafts, queue, varStats, brainStats] = await Promise.all([
-  getRecentRuns(clientId, 5),
-  getRunHistory(clientId, 8),
-  getPendingDrafts(clientId),
-  getManualQueue(clientId),
-  getVariationStats(clientId),
-  getDashboardStats(clientId).catch(() => null)
+  getRecentRuns(clientId, 5).catch(e    => { console.error('[dash] getRecentRuns:', e?.message ?? e); return []; }),
+  getRunHistory(clientId, 8).catch(e    => { console.error('[dash] getRunHistory:', e?.message ?? e); return []; }),
+  getPendingDrafts(clientId).catch(e    => { console.error('[dash] getPendingDrafts:', e?.message ?? e); return []; }),
+  getManualQueue(clientId).catch(e      => { console.error('[dash] getManualQueue:', e?.message ?? e); return []; }),
+  getVariationStats(clientId).catch(e   => { console.error('[dash] getVariationStats:', e?.message ?? e); return {}; }),
+  getDashboardStats(clientId).catch(e   => { console.error('[dash] getDashboardStats:', e?.message ?? e); return null; })
 ]);
 
 // Alert banners (3 human touchpoints)
@@ -135,7 +136,7 @@ document.getElementById('varStats').innerHTML = varHTML;
 const stages = ['new','contacted','replied','interested','discovery_call','proposal_sent','negotiation','won','lost'];
 const stageLabels = {new:'New',contacted:'Contacted',replied:'Replied',interested:'Interested',
   discovery_call:'Discovery Call',proposal_sent:'Proposal Sent',negotiation:'Negotiation',won:'Won',lost:'Lost'};
-const allLeads = await getLeads(clientId, { qualified: true });
+const allLeads = await getLeads(clientId, { qualified: true }).catch(e => { console.error('[dash] getLeads:', e?.message ?? e); return []; });
 const stageCounts = {};
 stages.forEach(s => stageCounts[s] = 0);
 allLeads.forEach(l => { if (stageCounts[l.stage] !== undefined) stageCounts[l.stage]++; });
@@ -174,7 +175,7 @@ if (brainStats) {
 if (runs.length > 0) {
   const latestRun = runs[0];
   if (latestRun.errors?.length > 0) {
-    const diagnosed = await diagnoseAll(latestRun.errors, clientId);
+    const diagnosed = await diagnoseAll(latestRun.errors, clientId).catch(() => []);
     const errorHTML = diagnosed.map(renderErrorCard).join('');
     document.getElementById('alerts').innerHTML += `
       <div style="margin-bottom:16px">
