@@ -18,8 +18,8 @@ export async function routeByRole() {
       location.href = '/client/dashboard.html';
       break;
     default:
-      // No client row yet — show setup or error
-      location.href = '/?error=no_account';
+      // No client row yet — go to first-time admin setup
+      location.href = '/admin/setup.html';
       break;
   }
 }

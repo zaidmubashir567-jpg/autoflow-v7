@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Setup — AutoFlow</title>
+  <link rel="preconnect" href="https://ndwvsrtyjnaddrifafqk.supabase.co" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a; color: #f1f5f9;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 24px;
+    }
+    .card {
+      background: #1e293b; border: 1px solid #334155;
+      border-radius: 16px; padding: 40px; max-width: 480px; width: 100%;
+      text-align: center;
+    }
+    .logo {
+      font-size: 28px; font-weight: 800; letter-spacing: -1px;
+      background: linear-gradient(135deg, #4f46e5, #818cf8);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+    h1 { font-size: 20px; font-weight: 600; margin-bottom: 8px; color: #f1f5f9; }
+    p  { color: #94a3b8; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
+    .user-badge {
+      background: #0f172a; border: 1px solid #334155; border-radius: 8px;
+      padding: 10px 16px; font-size: 13px; color: #94a3b8;
+      margin-bottom: 24px; word-break: break-all;
+    }
+    .user-badge span { color: #818cf8; font-weight: 500; }
+    input {
+      width: 100%; padding: 12px 16px; border: 1px solid #334155;
+      border-radius: 8px; background: #0f172a; color: #f1f5f9;
+      font-size: 14px; margin-bottom: 12px; outline: none;
+      transition: border-color .2s;
+    }
+    input:focus { border-color: #4f46e5; }
+    input::placeholder { color: #475569; }
+    button {
+      width: 100%; padding: 13px; background: #4f46e5; color: #fff;
+      border: none; border-radius: 8px; font-size: 15px; font-weight: 600;
+      cursor: pointer; transition: background .2s;
+    }
+    button:hover:not(:disabled) { background: #4338ca; }
+    button:disabled { opacity: .5; cursor: default; }
+    .status {
+      margin-top: 16px; padding: 12px; border-radius: 8px;
+      font-size: 13px; display: none;
+    }
+    .status.error   { background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; }
+    .status.success { background: #052e16; color: #86efac; border: 1px solid #14532d; }
+    .spinner {
+      display: inline-block; width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,.3); border-top-color: #fff;
+      border-radius: 50%; animation: spin .7s linear infinite;
+      vertical-align: middle; margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .warning {
+      background: #451a03; border: 1px solid #92400e; border-radius: 8px;
+      padding: 10px 14px; font-size: 12px; color: #fcd34d;
+      margin-bottom: 20px; text-align: left;
+    }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">AutoFlow</div>
+  <h1>First-Time Admin Setup</h1>
+  <p>No admin account found for your Google login. Create your admin workspace below — this only runs once.</p>
+
+  <div class="user-badge" id="userBadge">Checking session…</div>
+
+  <div class="warning" id="alreadyWarn" style="display:none">
+    ⚠️ An admin account already exists. If you're locked out, contact support.
+  </div>
+
+  <input type="text" id="agencyName" placeholder="Agency / business name (e.g. ZM Agency)" maxlength="80">
+  <button id="btn" onclick="createAdmin()">Create Admin Account</button>
+  <div class="status" id="status"></div>
+</div>
+
+<script type="module">
+import { supabase, getSession } from '/shared/auth.js';
+
+const btn        = document.getElementById('btn');
+const statusEl   = document.getElementById('status');
+const badgeEl    = document.getElementById('userBadge');
+const warnEl     = document.getElementById('alreadyWarn');
+
+// ── Boot ──────────────────────────────────────────────────────
+const session = await getSession();
+if (!session) { location.href = '/'; }
+
+const user = session.user;
+badgeEl.innerHTML = `Logged in as <span>${user.email}</span>`;
+
+// Check if an admin already exists
+const { data: existingAdmin } = await supabase
+  .from('clients')
+  .select('id')
+  .not('user_id', 'is', null)
+  .limit(1)
+  .single();
+
+if (existingAdmin) {
+  warnEl.style.display = 'block';
+  btn.disabled = true;
+}
+
+// ── Create admin row ──────────────────────────────────────────
+window.createAdmin = async function() {
+  const name = document.getElementById('agencyName').value.trim();
+  if (!name) { showStatus('error', 'Please enter your agency name.'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Creating…';
+  hideStatus();
+
+  const { error } = await supabase.from('clients').insert({
+    user_id : user.id,
+    name    : name,
+    email   : user.email,
+    plan    : 'agency'
+  });
+
+  if (error) {
+    // RLS may block direct insert — show SQL fallback instructions
+    showStatus('error', `
+      Auto-create blocked by RLS. Run this SQL in your
+      <a href="https://supabase.com/dashboard/project/ndwvsrtyjnaddrifafqk/sql/new"
+         target="_blank" style="color:#818cf8">Supabase SQL Editor</a>:<br><br>
+      <code style="font-size:11px;word-break:break-all;display:block;margin-top:8px;
+                   background:#0f172a;padding:10px;border-radius:6px;text-align:left">
+INSERT INTO clients (user_id, name, email, plan)<br>
+SELECT id, '${name.replace(/'/g,"\\'")}', '${user.email}', 'agency'<br>
+FROM auth.users WHERE email = '${user.email}'<br>
+ON CONFLICT DO NOTHING;
+      </code>
+      <br>Then refresh this page.
+    `);
+    btn.disabled = false;
+    btn.innerHTML = 'Create Admin Account';
+    return;
+  }
+
+  showStatus('success', '✅ Admin account created! Redirecting to dashboard…');
+  setTimeout(() => { location.href = '/admin/dashboard.html'; }, 1500);
+};
+
+function showStatus(type, msg) {
+  statusEl.style.display = 'block';
+  statusEl.className = 'status ' + type;
+  statusEl.innerHTML = msg;
+}
+function hideStatus() {
+  statusEl.style.display = 'none';
+}
+</script>
+</body>
+</html>

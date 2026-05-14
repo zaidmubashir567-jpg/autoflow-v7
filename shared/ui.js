@@ -268,9 +268,47 @@ export function skeleton(lines = 4) {
   ).join('');
 }
 
+// ─── PAGE LOADER BAR (NProgress-style thin top bar) ─────────
+// Call startLoader() at top of page, stopLoader() when data is painted.
+export function startLoader() {
+  let bar = document.getElementById('af-loader');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'af-loader';
+    bar.style.cssText = `
+      position:fixed;top:0;left:0;height:3px;width:0%;z-index:99999;
+      background:linear-gradient(90deg,#4f46e5,#818cf8);
+      transition:width .25s ease,opacity .4s ease;pointer-events:none;
+    `;
+    document.body.appendChild(bar);
+  }
+  bar.style.opacity = '1';
+  bar.style.width   = '30%';
+  setTimeout(() => { bar.style.width = '70%'; }, 200);
+  setTimeout(() => { bar.style.width = '85%'; }, 600);
+}
+export function stopLoader() {
+  const bar = document.getElementById('af-loader');
+  if (!bar) return;
+  bar.style.width   = '100%';
+  setTimeout(() => { bar.style.opacity = '0'; bar.style.width = '0%'; }, 300);
+}
+
 // ─── SHARED CSS (inject once into <head>) ────────────────────
 export function injectSharedCSS() {
   if (document.getElementById('af-shared-css')) return;
+
+  // Preconnect to Supabase — establishes TCP before any fetch fires
+  if (!document.querySelector('link[rel="preconnect"][href*="supabase"]')) {
+    ['https://ndwvsrtyjnaddrifafqk.supabase.co',
+     'https://cdn.jsdelivr.net'].forEach(href => {
+      const l = document.createElement('link');
+      l.rel = 'preconnect'; l.href = href; l.crossOrigin = '';
+      document.head.appendChild(l);
+    });
+  }
+
+  startLoader();
   const style = document.createElement('style');
   style.id = 'af-shared-css';
   style.textContent = `
@@ -413,6 +451,18 @@ export function injectSharedCSS() {
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
     /* ── Stats grid ── */
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; }
+    /* ── Page fade-in ── */
+    #app { animation: af-fade .18s ease; }
+    @keyframes af-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
   `;
   document.head.appendChild(style);
+
+  // Stop loader once #app content is injected (MutationObserver)
+  const obs = new MutationObserver(() => {
+    const app = document.getElementById('app');
+    if (app && app.children.length > 0) { stopLoader(); obs.disconnect(); }
+  });
+  obs.observe(document.body, { childList: true, subtree: true });
+  // Fallback: always stop after 4s
+  setTimeout(stopLoader, 4000);
 }

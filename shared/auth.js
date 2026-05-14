@@ -46,8 +46,29 @@ export async function signInWithGoogle() {
 
 // ─── Sign out ───────────────────────────────────────────────
 export async function signOut() {
+  _cClear();
   await supabase.auth.signOut();
   location.href = '/';
+}
+
+// ─── Session cache (sessionStorage, 3-min TTL) ──────────────
+// Eliminates 3 extra Supabase round-trips on every page navigation.
+const _TTL = 3 * 60 * 1000;
+
+function _cSet(key, val) {
+  try { sessionStorage.setItem(key, JSON.stringify({ v: val, t: Date.now() })); } catch {}
+}
+function _cGet(key) {
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return undefined;
+    const { v, t } = JSON.parse(raw);
+    if (Date.now() - t > _TTL) { sessionStorage.removeItem(key); return undefined; }
+    return v;
+  } catch { return undefined; }
+}
+function _cClear() {
+  ['_af_role', '_af_cid', '_af_uid'].forEach(k => { try { sessionStorage.removeItem(k); } catch {} });
 }
 
 // ─── Get current session + user ────────────────────────────
@@ -57,8 +78,9 @@ export async function getSession() {
 }
 
 export async function getUser() {
-  const { data: { user } } = await supabase.auth.getUser();
-  return user;
+  // Use session user (no extra network call) — verified on every requireAuth anyway
+  const session = await getSession();
+  return session?.user ?? null;
 }
 
 // ─── Role detection ─────────────────────────────────────────
@@ -66,6 +88,9 @@ export async function getUser() {
 // client  → has a row in clients where portal_user_id = auth.uid()
 // none    → not linked to any client yet (new user)
 export async function getUserRole() {
+  const cached = _cGet('_af_role');
+  if (cached !== undefined) return cached;
+
   const user = await getUser();
   if (!user) return 'none';
 
@@ -76,7 +101,7 @@ export async function getUserRole() {
     .eq('user_id', user.id)
     .single();
 
-  if (adminRow) return 'admin';
+  if (adminRow) { _cSet('_af_role', 'admin'); return 'admin'; }
 
   // Check portal client
   const { data: portalRow } = await supabase
@@ -85,13 +110,16 @@ export async function getUserRole() {
     .eq('portal_user_id', user.id)
     .single();
 
-  if (portalRow) return 'client';
-
-  return 'none';
+  const role = portalRow ? 'client' : 'none';
+  _cSet('_af_role', role);
+  return role;
 }
 
 // ─── Get client_id for current user ─────────────────────────
 export async function getClientId() {
+  const cached = _cGet('_af_cid');
+  if (cached !== undefined) return cached;
+
   const user = await getUser();
   if (!user) return null;
 
@@ -101,7 +129,9 @@ export async function getClientId() {
     .or(`user_id.eq.${user.id},portal_user_id.eq.${user.id}`)
     .single();
 
-  return data?.id ?? null;
+  const cid = data?.id ?? null;
+  _cSet('_af_cid', cid);
+  return cid;
 }
 
 // ─── Redirect away from login if already authed ─────────────
