@@ -6,6 +6,9 @@
     { "source": "/brain/(.*)", "destination": "/brain/$1" },
     { "source": "/", "destination": "/index.html" }
   ],
+  "redirects": [
+    { "source": "/login", "destination": "/client/login.html", "permanent": false }
+  ],
   "headers": [
     {
       "source": "/(.*)",

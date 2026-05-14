@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Client Portal — AutoFlow</title>
+  <link rel="preconnect" href="https://ndwvsrtyjnaddrifafqk.supabase.co" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a; color: #f1f5f9;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 24px;
+    }
+    .card {
+      background: #1e293b; border: 1px solid #334155;
+      border-radius: 16px; padding: 40px; max-width: 420px; width: 100%;
+      text-align: center;
+    }
+    .logo {
+      font-size: 22px; font-weight: 800; letter-spacing: -0.5px;
+      color: #f1f5f9; margin-bottom: 4px;
+    }
+    .logo span { color: #818cf8; }
+    .portal-badge {
+      display: inline-block; background: rgba(129,140,248,.15); color: #818cf8;
+      font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 10px;
+      letter-spacing: .5px; text-transform: uppercase; margin-bottom: 28px;
+    }
+    h1 { font-size: 20px; font-weight: 700; margin-bottom: 6px; color: #f1f5f9; }
+    .sub { color: #64748b; font-size: 13px; margin-bottom: 28px; line-height: 1.5; }
+
+    .tab-row {
+      display: flex; background: #0f172a; border-radius: 8px;
+      padding: 4px; gap: 4px; margin-bottom: 24px;
+    }
+    .tab {
+      flex: 1; padding: 8px; border: none; background: none;
+      color: #64748b; font-size: 13px; font-weight: 600; cursor: pointer;
+      border-radius: 6px; transition: all .15s;
+    }
+    .tab.active { background: #1e293b; color: #f1f5f9; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+
+    input {
+      width: 100%; padding: 12px 14px; border: 1px solid #334155;
+      border-radius: 8px; background: #0f172a; color: #f1f5f9;
+      font-size: 14px; margin-bottom: 12px; outline: none;
+      transition: border-color .2s;
+    }
+    input:focus { border-color: #4f46e5; }
+    input::placeholder { color: #475569; }
+
+    .btn-primary {
+      width: 100%; padding: 13px; background: #4f46e5; color: #fff;
+      border: none; border-radius: 8px; font-size: 15px; font-weight: 600;
+      cursor: pointer; transition: background .2s; margin-top: 4px;
+    }
+    .btn-primary:hover:not(:disabled) { background: #4338ca; }
+    .btn-primary:disabled { opacity: .5; cursor: default; }
+
+    .or-div {
+      display: flex; align-items: center; gap: 10px;
+      color: #334155; font-size: 12px; margin: 16px 0;
+    }
+    .or-div::before, .or-div::after {
+      content: ''; flex: 1; height: 1px; background: #334155;
+    }
+
+    .btn-magic {
+      width: 100%; padding: 12px; background: none; color: #818cf8;
+      border: 1px solid #334155; border-radius: 8px; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: all .2s;
+    }
+    .btn-magic:hover { border-color: #4f46e5; background: rgba(79,70,229,.08); }
+
+    .status {
+      margin-top: 14px; padding: 11px 14px; border-radius: 8px;
+      font-size: 13px; display: none; text-align: left;
+    }
+    .status.error   { background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; display: block; }
+    .status.success { background: #052e16; color: #86efac; border: 1px solid #14532d; display: block; }
+
+    .spinner {
+      display: inline-block; width: 15px; height: 15px;
+      border: 2px solid rgba(255,255,255,.3); border-top-color: #fff;
+      border-radius: 50%; animation: spin .7s linear infinite;
+      vertical-align: middle; margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .footer-link {
+      margin-top: 24px; font-size: 12px; color: #475569;
+    }
+    .footer-link a { color: #818cf8; text-decoration: none; }
+    .footer-link a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🤖 AutoFlow <span>Portal</span></div>
+  <div class="portal-badge">Client Access</div>
+
+  <h1>Sign in to your portal</h1>
+  <p class="sub">View your campaign results, leads, and proposals in real time.</p>
+
+  <div class="tab-row">
+    <button class="tab active" id="tabPassword" onclick="switchTab('password')">Password</button>
+    <button class="tab" id="tabMagic" onclick="switchTab('magic')">Magic Link</button>
+  </div>
+
+  <!-- Password login -->
+  <div id="panelPassword">
+    <input type="email" id="emailPw" placeholder="your@email.com" autocomplete="email">
+    <input type="password" id="password" placeholder="Password" autocomplete="current-password">
+    <button class="btn-primary" id="btnPw" onclick="loginPassword()">Sign In</button>
+  </div>
+
+  <!-- Magic link -->
+  <div id="panelMagic" style="display:none">
+    <input type="email" id="emailMagic" placeholder="your@email.com" autocomplete="email">
+    <button class="btn-primary" id="btnMagic" onclick="sendMagicLink()">Send Magic Link</button>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <div class="footer-link">
+    Not a client yet? <a href="/">Learn about AutoFlow →</a>
+  </div>
+</div>
+
+<script type="module">
+import { supabase } from '/shared/auth.js';
+
+// ── Tab switching ─────────────────────────────────────────────
+window.switchTab = function(tab) {
+  document.getElementById('panelPassword').style.display = tab === 'password' ? '' : 'none';
+  document.getElementById('panelMagic').style.display    = tab === 'magic'    ? '' : 'none';
+  document.getElementById('tabPassword').classList.toggle('active', tab === 'password');
+  document.getElementById('tabMagic').classList.toggle('active',    tab === 'magic');
+  clearStatus();
+};
+
+// ── Check if already logged in ────────────────────────────────
+const { data: { session } } = await supabase.auth.getSession();
+if (session) {
+  location.href = '/client/dashboard.html';
+}
+
+// ── Password login ────────────────────────────────────────────
+window.loginPassword = async function() {
+  const email = document.getElementById('emailPw').value.trim();
+  const pw    = document.getElementById('password').value;
+  if (!email || !pw) { showStatus('error', 'Please enter your email and password.'); return; }
+
+  const btn = document.getElementById('btnPw');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Signing in…';
+
+  const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
+
+  if (error) {
+    showStatus('error', error.message || 'Sign-in failed. Check your credentials.');
+    btn.disabled = false;
+    btn.textContent = 'Sign In';
+    return;
+  }
+  location.href = '/client/dashboard.html';
+};
+
+// ── Magic link ────────────────────────────────────────────────
+window.sendMagicLink = async function() {
+  const email = document.getElementById('emailMagic').value.trim();
+  if (!email) { showStatus('error', 'Please enter your email address.'); return; }
+
+  const btn = document.getElementById('btnMagic');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Sending…';
+
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: `${location.origin}/client/dashboard.html` }
+  });
+
+  if (error) {
+    showStatus('error', error.message || 'Failed to send magic link.');
+    btn.disabled = false;
+    btn.textContent = 'Send Magic Link';
+    return;
+  }
+  showStatus('success', `✅ Magic link sent to <strong>${email}</strong> — check your inbox.`);
+  btn.textContent = 'Resend Magic Link';
+  btn.disabled = false;
+};
+
+// ── Helpers ───────────────────────────────────────────────────
+function showStatus(type, msg) {
+  const el = document.getElementById('status');
+  el.className = 'status ' + type;
+  el.innerHTML = msg;
+}
+function clearStatus() {
+  const el = document.getElementById('status');
+  el.className = 'status';
+  el.innerHTML = '';
+}
+</script>
+</body>
+</html>
