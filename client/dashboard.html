@@ -1,39 +1,228 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Dashboard — AutoFlow Portal</title>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Dashboard — AutoFlow Portal</title>
   <link rel="preconnect" href="https://ndwvsrtyjnaddrifafqk.supabase.co" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="modulepreload" href="/shared/auth.js">
   <link rel="modulepreload" href="/shared/ui.js">
   <link rel="modulepreload" href="/shared/db.js">
-  <link rel="modulepreload" href="/shared/api.js"></head>
-<body><div id="app">Loading…</div>
+  <link rel="modulepreload" href="/shared/api.js">
+
+  <!-- ── 3D DARK OVERRIDES ───────────────────────────────── -->
+  <style>
+    :root {
+      --d-bg:      #060614;
+      --d-surface: #0d0d2b;
+      --d-card:    rgba(255,255,255,0.04);
+      --d-border:  rgba(255,255,255,0.09);
+      --d-border2: rgba(99,102,241,0.35);
+      --d-accent:  #6366f1;
+      --d-accent2: #818cf8;
+      --d-glow:    0 0 40px rgba(99,102,241,.18);
+      --d-shadow:  0 8px 32px rgba(0,0,0,.55);
+    }
+
+    body {
+      background: var(--d-bg) !important;
+      background-image:
+        radial-gradient(ellipse 55% 45% at 75% -5%, rgba(139,92,246,.12), transparent),
+        radial-gradient(ellipse 40% 35% at 10% 85%, rgba(99,102,241,.08), transparent) !important;
+      background-attachment: fixed !important;
+    }
+    [data-theme="dark"] {
+      --color-bg:         var(--d-bg);
+      --color-surface:    var(--d-surface);
+      --color-border:     var(--d-border);
+      --color-text:       #f1f5f9;
+      --color-text-muted: #94a3b8;
+      --color-accent:     var(--d-accent);
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      background: rgba(6,6,20,0.95) !important;
+      border-right: 1px solid var(--d-border);
+      backdrop-filter: blur(20px);
+      box-shadow: 4px 0 24px rgba(0,0,0,.4);
+    }
+    .sidebar-brand { border-bottom: 1px solid var(--d-border) !important; }
+    .brand-icon { font-size: 22px; filter: drop-shadow(0 0 8px rgba(99,102,241,.6)); }
+    .nav-item.active {
+      background: rgba(99,102,241,.15) !important;
+      border-left-color: var(--d-accent) !important;
+    }
+    .nav-item:hover { background: rgba(255,255,255,.05) !important; }
+
+    /* ── Stat cards 3D ── */
+    .stat-card {
+      background: var(--d-card) !important;
+      border: 1px solid var(--d-border) !important;
+      border-radius: 14px !important;
+      backdrop-filter: blur(16px);
+      box-shadow: var(--d-shadow), inset 0 1px 0 rgba(255,255,255,.07) !important;
+      transform: perspective(600px) rotateX(3deg);
+      transition: transform .3s ease, box-shadow .3s ease, border-color .3s !important;
+      position: relative; overflow: hidden;
+    }
+    .stat-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(99,102,241,.5), transparent);
+    }
+    .stat-card:hover {
+      transform: perspective(600px) rotateX(0deg) translateY(-6px) !important;
+      box-shadow: var(--d-shadow), var(--d-glow), inset 0 1px 0 rgba(255,255,255,.12) !important;
+      border-color: var(--d-border2) !important;
+    }
+    .stat-value {
+      font-size: 32px !important; font-weight: 900 !important;
+      background: linear-gradient(135deg, #fff, var(--d-accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .stat-icon { font-size: 26px !important; filter: drop-shadow(0 2px 6px rgba(99,102,241,.4)); }
+
+    /* ── Activity card ── */
+    .card {
+      background: var(--d-card) !important;
+      border: 1px solid var(--d-border) !important;
+      border-radius: 14px !important;
+      backdrop-filter: blur(16px);
+      box-shadow: var(--d-shadow), inset 0 1px 0 rgba(255,255,255,.05) !important;
+    }
+    .card-title { color: #f1f5f9 !important; font-weight: 700 !important;
+                  padding-bottom: 12px; border-bottom: 1px solid var(--d-border); margin-bottom: 16px !important; }
+
+    /* ── Page header ── */
+    .page-title { font-size: 24px !important; font-weight: 900 !important; }
+
+    /* ── Welcome banner ── */
+    .welcome-banner {
+      background: linear-gradient(135deg, rgba(99,102,241,.12), rgba(139,92,246,.07));
+      border: 1px solid rgba(99,102,241,.25);
+      border-radius: 16px; padding: 20px 24px; margin-bottom: 24px;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 4px 20px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.08);
+    }
+    .wb-left h2 { font-size: 18px; font-weight: 800; color: #f1f5f9; margin-bottom: 4px; }
+    .wb-left p  { font-size: 13px; color: #94a3b8; }
+    .wb-badge   { background: rgba(16,185,129,.15); color: #34d399; border: 1px solid rgba(16,185,129,.25);
+                  font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 20px; white-space: nowrap; }
+
+    /* ── Activity rows ── */
+    .act-row { display: flex; justify-content: space-between; align-items: center;
+               padding: 10px 8px; border-bottom: 1px solid var(--d-border);
+               border-radius: 8px; transition: background .15s; }
+    .act-row:hover { background: rgba(99,102,241,.06); }
+    .act-row:last-child { border-bottom: none; }
+
+    /* ── Skeleton ── */
+    .skeleton-line {
+      background: linear-gradient(90deg, rgba(255,255,255,.04) 25%, rgba(255,255,255,.08) 50%, rgba(255,255,255,.04) 75%) !important;
+      background-size: 200% 100% !important;
+      animation: shimmer 1.5s infinite !important;
+    }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+    /* ── Loader ── */
+    #af-loader { background: linear-gradient(90deg, var(--d-accent), #a78bfa) !important; }
+
+    /* ── Ambient glow ── */
+    .main::before {
+      content: ''; position: fixed; width: 300px; height: 300px;
+      background: radial-gradient(circle, rgba(99,102,241,.05) 0%, transparent 70%);
+      top: 20%; right: 8%; pointer-events: none; border-radius: 50%; z-index: 0;
+    }
+    .main { position: relative; z-index: 1; }
+  </style>
+</head>
+<body>
+<div id="app">Loading…</div>
+
 <script type="module">
 import { requireAuth, getClientId } from '/shared/auth.js';
 import { clientNav, injectSharedCSS, statCard, skeleton } from '/shared/ui.js';
 import { getRecentRuns, getLeads, getRunHistory } from '/shared/db.js';
 import { supabase } from '/shared/auth.js';
-injectSharedCSS(); const auth = await requireAuth('client'); const clientId = await getClientId();
+
+injectSharedCSS();
+const auth = await requireAuth('client');
+const clientId = await getClientId();
 const { data: clientRow } = await supabase.from('clients').select('name,plan').eq('portal_user_id', auth.user.id).single();
-document.getElementById('app').innerHTML = `${clientNav('Dashboard')}<main class="main">
-  <div class="page-header"><h1 class="page-title">Welcome back${clientRow?.name?' to '+clientRow.name:''}</h1>
-    <p class="page-sub">Your AutoFlow campaign results — updated in real time</p></div>
-  <div class="page-body">
-    <div class="stats-grid" id="statsGrid">${skeleton(1)}</div>
-    <div style="margin-top:24px" class="card"><div class="card-title">Recent Activity</div><div id="activity">${skeleton(3)}</div></div>
-  </div></main>`;
-const [runs, history] = await Promise.all([getRecentRuns(clientId,3), getRunHistory(clientId,10)]);
-const totalLeads = history.reduce((s,r)=>s+(r.leads_found??0),0);
-const totalQualified = history.reduce((s,r)=>s+(r.leads_qualified??0),0);
-const avgContact = history.length?(history.reduce((s,r)=>s+(r.contact_rate??0),0)/history.length).toFixed(1):0;
+
+const planColor = clientRow?.plan === 'pro' ? '#818cf8' : clientRow?.plan === 'agency' ? '#f59e0b' : '#64748b';
+const planLabel = clientRow?.plan ? clientRow.plan.toUpperCase() : 'FREE';
+
+document.getElementById('app').innerHTML = `
+  ${clientNav('Dashboard')}
+  <main class="main">
+    <div class="page-header">
+      <h1 class="page-title">Welcome back${clientRow?.name ? ', ' + clientRow.name : ''} 👋</h1>
+      <p class="page-sub">Your AutoFlow campaign results — updated in real time</p>
+    </div>
+    <div class="page-body">
+
+      <!-- Welcome Banner -->
+      <div class="welcome-banner">
+        <div class="wb-left">
+          <h2>🤖 AutoFlow is running your pipeline</h2>
+          <p>Leads are being found, scored, and emailed on your behalf. Check your stats below.</p>
+        </div>
+        <span class="wb-badge" style="background:rgba(99,102,241,.15);color:${planColor};border-color:rgba(99,102,241,.25)">
+          ${planLabel} PLAN
+        </span>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid" id="statsGrid" style="margin-bottom:24px">${skeleton(1)}</div>
+
+      <!-- Activity -->
+      <div class="card">
+        <div class="card-title">📋 Recent Campaign Activity</div>
+        <div id="activity">${skeleton(3)}</div>
+      </div>
+
+    </div>
+  </main>`;
+
+const [runs, history] = await Promise.all([
+  getRecentRuns(clientId, 5).catch(() => []),
+  getRunHistory(clientId, 10).catch(() => [])
+]);
+
+const totalLeads     = history.reduce((s,r) => s + (r.leads_found ?? 0), 0);
+const totalQualified = history.reduce((s,r) => s + (r.leads_qualified ?? 0), 0);
+const avgContact     = history.length
+  ? (history.reduce((s,r) => s + (r.contact_rate ?? 0), 0) / history.length).toFixed(1) : 0;
+
 document.getElementById('statsGrid').innerHTML = [
-  statCard('Leads Found',totalLeads,'all campaigns','👥'),
-  statCard('Qualified',totalQualified,'score ≥ 6','✅'),
-  statCard('Contact Rate',avgContact+'%','emails + DMs','📡'),
-  statCard('Campaigns Run',runs.length,'total','⚡'),
+  statCard('Leads Found',    totalLeads,          'all campaigns', '👥'),
+  statCard('Qualified',      totalQualified,      'score ≥ 6', '✅'),
+  statCard('Contact Rate',   avgContact + '%',    'emails + DMs', '📡'),
+  statCard('Campaigns Run',  runs.length,         'total runs', '⚡'),
 ].join('');
-document.getElementById('activity').innerHTML = runs.length===0
-  ? '<p style="color:var(--color-text-muted);font-size:14px">No campaigns yet. Your team is setting things up.</p>'
-  : runs.map(r=>`<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--color-border);font-size:14px">
-      <div><strong>${r.city}, ${r.state}</strong> · ${r.niche}</div>
-      <div style="color:var(--color-text-muted)">${r.leads_found??0} leads · ${new Date(r.created_at).toLocaleDateString()}</div>
-    </div>`).join('');
-</script></body></html>
+
+document.getElementById('activity').innerHTML = runs.length === 0
+  ? `<p style="color:var(--color-text-muted);font-size:14px;padding:12px 0">No campaigns yet. Your team is setting things up — check back soon! 🚀</p>`
+  : runs.map(r => {
+      const contactPct = r.contact_rate ? r.contact_rate.toFixed(1) + '%' : '—';
+      const dotColor   = r.status === 'completed' ? '#10b981' : r.status === 'running' ? '#6366f1' : '#f59e0b';
+      return `<div class="act-row">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="width:8px;height:8px;border-radius:50%;background:${dotColor};flex-shrink:0;box-shadow:0 0 8px ${dotColor}"></span>
+          <div>
+            <div style="font-size:14px;font-weight:600;color:#f1f5f9">${r.city}, ${r.state} · ${r.niche}</div>
+            <div style="font-size:12px;color:var(--color-text-muted)">${new Date(r.created_at).toLocaleDateString()}</div>
+          </div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:13px;color:#f1f5f9;font-weight:600">${r.leads_found ?? 0} leads</div>
+          <div style="font-size:11px;color:var(--color-text-muted)">${contactPct} contact</div>
+        </div>
+      </div>`;
+    }).join('');
+</script>
+</body>
+</html>
