@@ -214,18 +214,30 @@ export function channelBadge(foundChannels = []) {
 }
 
 // ─── NODE PROGRESS (pipeline run live view) ──────────────────
-const NODE_ORDER = ['Victor','Maya','Marcus','Filter','Sofia','Aria','James','Leo','Email Hunter','Deploy','Elena','Priya','Raj','Theo'];
+const NODE_META = {
+  'Discovering':   { icon: '🔍', label: 'Phase 1 — Discovering'   },
+  'Investigating': { icon: '🌐', label: 'Phase 2 — Investigating'  },
+  'Scoring':       { icon: '🎯', label: 'Phase 2 — Scoring Leads'  },
+  'Emailing':      { icon: '✉️',  label: 'Phase 4 — Writing Emails' },
+  'Scheduling':    { icon: '📅', label: 'Phase 3 — Scheduling'     },
+  'Learning':      { icon: '🧠', label: 'Phase 5 — Niche Memory'   },
+  'paused_approval':{ icon: '✋', label: 'Awaiting Your Review'    }
+};
+const NODE_ORDER = ['Discovering','Investigating','Scoring','Emailing','Scheduling','Learning','paused_approval'];
 
 export function nodeProgress(currentNode, status = 'running') {
+  // Normalise unknown node names — map anything not in NODE_ORDER to 'Discovering'
+  const activeNode = NODE_ORDER.includes(currentNode) ? currentNode : (status === 'completed' ? 'paused_approval' : 'Discovering');
   return NODE_ORDER.map(name => {
     const idx     = NODE_ORDER.indexOf(name);
-    const curIdx  = NODE_ORDER.indexOf(currentNode);
+    const curIdx  = NODE_ORDER.indexOf(activeNode);
     const done    = idx < curIdx || status === 'completed';
-    const active  = name === currentNode && status === 'running';
+    const active  = name === activeNode && status === 'running';
     const cls     = done ? 'node--done' : active ? 'node--active' : 'node--pending';
     const spinner = active ? '<span class="node-spinner"></span>' : '';
-    return `<div class="pipeline-node ${cls}">
-      ${spinner}<span class="node-name">${name}</span>
+    const meta    = NODE_META[name] ?? { icon: '⚙️', label: name };
+    return `<div class="pipeline-node ${cls}" title="${meta.label}">
+      ${spinner}<span style="margin-right:5px">${meta.icon}</span><span class="node-name">${meta.label}</span>
     </div>`;
   }).join('');
 }
