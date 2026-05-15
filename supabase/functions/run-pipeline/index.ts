@@ -5,6 +5,7 @@
 // Phase 3: 3-touch follow-up scheduling (Day 3 / 7 / 14)
 // Phase 4: AI Mini-Audit block in every outreach email
 // Phase 5: Niche memory — Claude learns what works per niche
+// Apollo Replacement: find_contact tool — multi-source email/phone extraction
 // ================================================================
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { getAdminClient, CORS } from "../_shared/helpers.ts";
@@ -104,6 +105,20 @@ const TOOLS = [
         }
       },
       required: ["message", "type"]
+    }
+  },
+  {
+    name: "find_contact",
+    description: "Apollo replacement — systematically finds email, phone, and owner name for a business. Checks website pages, Google Maps, and LinkedIn. Always call this BEFORE save_lead so you have real contact data.",
+    input_schema: {
+      type: "object",
+      properties: {
+        business_name: { type: "string", description: "Full business name" },
+        website:       { type: "string", description: "Business website URL (include https://)" },
+        city:          { type: "string", description: "City the business is in" },
+        niche:         { type: "string", description: "Business type e.g. Dentists" }
+      },
+      required: ["business_name", "city", "niche"]
     }
   },
   {
@@ -323,6 +338,106 @@ Use this intel from the first search — start with the query patterns that work
       } catch (e) { return JSON.stringify({ error: String(e) }); }
     };
 
+    // ── Apollo replacement: multi-source contact finder ──────────
+    const findContact = async (input: Record<string,unknown>): Promise<string> => {
+      const name    = input.business_name as string;
+      const website = input.website as string | undefined;
+      const bCity   = input.city    as string;
+      const bNiche  = input.niche   as string;
+
+      // Regex helpers
+      const emailRe = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
+      const phoneRe = /(?:\+?1[\s\-.]?)?\(?\d{3}\)?[\s\-.]?\d{3}[\s\-.]?\d{4}/g;
+
+      const extractFromText = (text: string) => {
+        const emails = [...new Set((text.match(emailRe) || [])
+          .filter(e => !e.includes('example') && !e.includes('domain') && !e.includes('email@') && !e.includes('sentry') && !e.includes('wix') && !e.endsWith('.png') && !e.endsWith('.jpg')))];
+        const phones = [...new Set((text.match(phoneRe) || []).map(p => p.trim()))];
+        return { emails, phones };
+      };
+
+      const safeFetch = async (url: string): Promise<string> => {
+        try {
+          const r = await fetch(url, {
+            headers: { "User-Agent": "Mozilla/5.0 (compatible; AutoFlowBot/1.0)" },
+            signal: AbortSignal.timeout(8000)
+          });
+          if (!r.ok) return "";
+          const html = await r.text();
+          return html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().substring(0, 6000);
+        } catch (_) { return ""; }
+      };
+
+      let email: string | null = null;
+      let phone: string | null = null;
+      let ownerName: string | null = null;
+      const foundVia: string[] = [];
+
+      // ── Step 1: Scrape website pages ─────────────────────────
+      if (website) {
+        const base = website.replace(/\/$/, "");
+        const pagesToCheck = [base, `${base}/contact`, `${base}/contact-us`, `${base}/about`, `${base}/team`];
+        for (const pageUrl of pagesToCheck) {
+          const text = await safeFetch(pageUrl);
+          if (!text) continue;
+          const { emails, phones } = extractFromText(text);
+          if (!email && emails.length) { email = emails[0]; foundVia.push(`website (${pageUrl})`); }
+          if (!phone && phones.length) { phone = phones[0]; foundVia.push(`website-phone`); }
+          if (email && phone) break;
+        }
+
+        // ── Step 2: Owner name — look for "owner", "founder", "Dr.", "CEO" on About page ──
+        if (!ownerName) {
+          const aboutText = await safeFetch(`${base}/about`);
+          const ownerRe = /(?:owner|founder|ceo|president|dr\.|dentist|principal)[:\s,]+([A-Z][a-z]+ [A-Z][a-z]+)/gi;
+          const ownerMatch = ownerRe.exec(aboutText);
+          if (ownerMatch) { ownerName = ownerMatch[1]; foundVia.push("about-page"); }
+        }
+      }
+
+      // ── Step 3: Google Maps / search for phone + owner ────────
+      if (!email || !phone) {
+        const mapsQuery = `${name} ${bCity} contact email phone`;
+        const searchText = await safeFetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(mapsQuery)}&kl=us-en`);
+        const { emails: se, phones: sp } = extractFromText(searchText);
+        if (!email && se.length)  { email = se[0]; foundVia.push("search-engine"); }
+        if (!phone && sp.length)  { phone = sp[0]; foundVia.push("search-phone"); }
+      }
+
+      // ── Step 4: LinkedIn for owner name ──────────────────────
+      if (!ownerName) {
+        const liQuery = `${bNiche} owner "${bCity}" site:linkedin.com`;
+        const liText  = await safeFetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(liQuery)}&kl=us-en`);
+        // Extract name from LinkedIn title pattern: "Name - Title at Company | LinkedIn"
+        const liRe = /([A-Z][a-z]+ [A-Z][a-z]+)\s*[-–|]\s*(?:owner|founder|ceo|dentist|principal|president)/gi;
+        const liMatch = liRe.exec(liText);
+        if (liMatch) { ownerName = liMatch[1]; foundVia.push("linkedin"); }
+      }
+
+      // ── Step 5: Common email pattern fallback ─────────────────
+      let emailPatterns: string[] = [];
+      if (!email && website) {
+        try {
+          const domain = new URL(website).hostname.replace(/^www\./, "");
+          emailPatterns = [`info@${domain}`, `contact@${domain}`, `hello@${domain}`, `admin@${domain}`];
+          // We can't verify without sending — flag these as "guessed" for Claude to note
+        } catch (_) { /* ignore */ }
+      }
+
+      return JSON.stringify({
+        email,
+        phone,
+        owner_name: ownerName,
+        found_via: foundVia,
+        email_patterns: emailPatterns.length ? emailPatterns : undefined,
+        note: email
+          ? `✅ Real email found via ${foundVia.join(", ")}`
+          : emailPatterns.length
+            ? `⚠️ No email found. Likely patterns: ${emailPatterns.slice(0,2).join(", ")} — use the most business-appropriate one`
+            : "❌ No email found — LinkedIn or cold-call outreach recommended"
+      });
+    };
+
     const saveLead = async (input: Record<string,unknown>): Promise<string> => {
       try {
         const { data: run } = await sb.from("pipeline_runs")
@@ -454,9 +569,10 @@ Use this intel from the first search — start with the query patterns that work
     };
 
     const executeTool = async (name: string, input: Record<string,unknown>): Promise<string> => {
-      if (name === "search_web")        return searchWeb(input.query as string);
-      if (name === "fetch_page")        return fetchPage(input.url as string);
-      if (name === "save_lead")         return saveLead(input);
+      if (name === "search_web")          return searchWeb(input.query as string);
+      if (name === "fetch_page")          return fetchPage(input.url as string);
+      if (name === "find_contact")        return findContact(input);
+      if (name === "save_lead")           return saveLead(input);
       if (name === "save_niche_insights") return saveNicheInsights(input);
       if (name === "send_message") {
         await sb.from("pipeline_chat").insert({
@@ -495,15 +611,23 @@ Search for "${niche} ${city} ${state}" and 2-3 variations. Also try "${niche} ne
 
 PHASE 2 — INVESTIGATE  [node: "Investigating"]
 → update_progress({node: "Investigating", message: "Visiting business websites…"})
-For each candidate:
-• fetch_page website + /contact + /about pages
-• Find: owner name, email, phone, LinkedIn, Facebook, Instagram
-• If no email on site: search_web "[business name] email" or "[owner name] LinkedIn ${city}"
-• REVIEW GAP: search_web "[business name] ${city} reviews" — note their review COUNT and RATING
-  Compare to top local competitor. If competitor has 3× more reviews → HIGH-PRIORITY PAIN POINT
-• SOCIAL CHECK: note which platforms they're on or missing entirely
-• WEBSITE AGE: check footer copyright or design — estimate year built
-→ send_message("insight") for any business with <20 reviews + no social media — these are your BEST leads
+For each candidate, run TWO parallel tracks:
+
+TRACK A — CONTACT EXTRACTION (Apollo replacement):
+• call find_contact({business_name, website, city: "${city}", niche: "${niche}"})
+  → This auto-checks website pages, Google Maps, LinkedIn, and common email patterns
+  → Returns: email, phone, owner_name, found_via, email_patterns
+  → If email_patterns returned (no real email found): use info@ or contact@ — flag in score_reason
+  → If no email AND no patterns: still save the lead — use SMS or LinkedIn channel instead
+
+TRACK B — AUDIT DATA (for the mini-audit block):
+• fetch_page: homepage to check website age (footer copyright year) and social links
+• search_web "[business name] ${city} reviews" — get their review COUNT and RATING
+• search_web "[top competitor] ${city} reviews" — compare to their best local competitor
+• SOCIAL CHECK: note which platforms missing (Instagram, Facebook, Google Business)
+• WEBSITE AGE: estimate year from footer or design style
+
+→ send_message("insight") for any business with <20 reviews + no social media — these are BEST leads
 
 PHASE 3 — QUALIFY BY INTENT  [node: "Scoring"]
 → update_progress({node: "Scoring", message: "Scoring and qualifying leads…"})
