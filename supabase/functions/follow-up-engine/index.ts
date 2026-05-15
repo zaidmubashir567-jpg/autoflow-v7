@@ -1,166 +1,221 @@
-// ============================================================
-// AutoFlow v7 — follow-up-engine Edge Function
-// Runs daily at 10:00 AM (scheduled via Supabase cron)
-// Twin patterns: Day 0/3/7/14 sequence, FU3→FU2→FU1→new priority, 20/day hard cap
-// ============================================================
-
-import { getAdminClient, callAI, ok, err, CORS } from '../_shared/helpers.ts';
-
-const DAILY_CAP = 20; // Twin pattern: hard cap per client per day
+// ================================================================
+// AutoFlow v7 — follow-up-engine  (Phase 3 rewrite)
+// Runs hourly via pg_cron.
+// Queries outreach_log WHERE status='scheduled' AND scheduled_at <= now()
+// Sends via Gmail if oauth token exists, otherwise marks 'needs_sender'.
+// Respects daily_email_cap per client.
+// ================================================================
+import { getAdminClient, CORS } from "../_shared/helpers.ts";
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   const sb = getAdminClient();
-  const results = [];
 
-  // Process all active clients
-  const { data: clients } = await sb.from('clients').select('*').eq('active', true);
-  if (!clients) return ok({ processed: 0 });
+  // Load all active clients
+  const { data: clients } = await sb
+    .from("clients")
+    .select("id, daily_email_cap, gmail_access, gmail_refresh, smtp_host, smtp_user, smtp_pass, claude_key")
+    .eq("active", true);
+
+  if (!clients?.length) {
+    return new Response(JSON.stringify({ processed: 0, message: "No active clients" }), {
+      headers: { ...CORS, "Content-Type": "application/json" }
+    });
+  }
+
+  const results = [];
 
   for (const client of clients) {
     try {
-      const sent = await processClientFollowUps(sb, client);
-      results.push({ client_id: client.id, sent });
+      const result = await processClient(sb, client);
+      results.push({ client_id: client.id, ...result });
     } catch (e) {
       console.error(`[follow-up-engine] Client ${client.id}:`, (e as Error).message);
+      results.push({ client_id: client.id, error: (e as Error).message });
     }
   }
 
-  return ok({ processed: clients.length, results });
+  return new Response(JSON.stringify({ ok: true, results }), {
+    headers: { ...CORS, "Content-Type": "application/json" }
+  });
 });
 
-async function processClientFollowUps(sb: ReturnType<typeof import('../_shared/helpers.ts').getAdminClient>, client: Record<string, unknown>) {
+// ── Per-client processor ─────────────────────────────────────────
+async function processClient(
+  sb: ReturnType<typeof import("../_shared/helpers.ts").getAdminClient>,
+  client: Record<string, unknown>
+) {
   const clientId = client.id as string;
-  const cap = (client.daily_email_cap as number) ?? DAILY_CAP;
-  let sent = 0;
+  const cap = (client.daily_email_cap as number) ?? 20;
 
-  // Today's send count
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const { count: todayCount } = await sb.from('outreach_log')
-    .select('*', { count: 'exact', head: true })
-    .eq('client_id', clientId)
-    .gte('sent_at', today.toISOString());
+  // How many emails sent today already?
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+
+  const { count: todayCount } = await sb
+    .from("outreach_log")
+    .select("*", { count: "exact", head: true })
+    .eq("client_id", clientId)
+    .eq("status", "sent")
+    .gte("sent_at", todayStart.toISOString());
 
   let remaining = cap - (todayCount ?? 0);
-  if (remaining <= 0) return 0; // Cap reached
+  if (remaining <= 0) {
+    return { sent: 0, skipped: 0, reason: "daily cap reached" };
+  }
 
-  const now = new Date();
+  // Find all due follow-ups for this client
+  const now = new Date().toISOString();
+  const { data: due } = await sb
+    .from("outreach_log")
+    .select(`
+      id, lead_id, subject, body, channel, follow_up_seq,
+      leads ( email, phone, business_name, owner_name, do_not_contact )
+    `)
+    .eq("client_id", clientId)
+    .eq("status", "scheduled")
+    .lte("scheduled_at", now)
+    .order("scheduled_at", { ascending: true })
+    .limit(remaining);
 
-  // ── PRIORITY ORDER: FU3 → FU2 → FU1 → new (Twin pattern) ─
-  const followUpDays = [14, 7, 3]; // Process FU3 first
+  if (!due?.length) {
+    return { sent: 0, skipped: 0, reason: "no due follow-ups" };
+  }
 
-  for (const day of followUpDays) {
-    if (remaining <= 0) break;
+  let sent = 0;
+  let skipped = 0;
 
-    // Find leads that had Day 0 send X days ago, haven't replied, not do_not_contact
-    const cutoffDate = new Date(now.getTime() - day * 24 * 60 * 60 * 1000);
-    const windowStart = new Date(cutoffDate.getTime() - 12 * 60 * 60 * 1000); // 12h window
-    const windowEnd   = new Date(cutoffDate.getTime() + 12 * 60 * 60 * 1000);
+  for (const row of due) {
+    if (sent >= remaining) break;
 
-    const { data: day0Sends } = await sb.from('outreach_log')
-      .select('lead_id, thread_id, variation')
-      .eq('client_id', clientId)
-      .eq('sequence_day', 0)
-      .gte('sent_at', windowStart.toISOString())
-      .lte('sent_at', windowEnd.toISOString())
-      .eq('replied', false);
+    const lead = (row.leads as Record<string, unknown> | null);
+    if (!lead || lead.do_not_contact) {
+      // Mark as skipped — do_not_contact
+      await sb.from("outreach_log").update({ status: "failed" }).eq("id", row.id);
+      skipped++;
+      continue;
+    }
 
-    if (!day0Sends?.length) continue;
+    const email = lead.email as string | null;
 
-    for (const send of day0Sends) {
-      if (remaining <= 0) break;
+    // ── Try to send ────────────────────────────────────────────
+    let sendResult: { ok: boolean; thread_id?: string; error?: string } = { ok: false };
 
-      // Skip if already sent this follow-up day
-      const { count: alreadySent } = await sb.from('outreach_log')
-        .select('*', { count: 'exact', head: true })
-        .eq('client_id', clientId)
-        .eq('lead_id', send.lead_id)
-        .eq('sequence_day', day);
-
-      if ((alreadySent ?? 0) > 0) continue;
-
-      // Get lead info
-      const { data: lead } = await sb.from('leads').select('*').eq('id', send.lead_id).single();
-      if (!lead || lead.do_not_contact) continue; // RLS also enforces this
-
-      // Generate follow-up copy
-      const fupBody = await generateFollowUp(client, lead, day, send.variation as string);
-
-      // Send email
-      const emailResult = await sendFollowUpEmail(client, lead, fupBody, day, send.thread_id as string);
-      if (emailResult) {
-        await sb.from('outreach_log').insert({
-          client_id: clientId,
-          lead_id: send.lead_id,
-          channel: 'email',
-          variation: send.variation,
-          subject: fupBody.subject,
-          body: fupBody.body,
-          sequence_day: day,
-          thread_id: emailResult.threadId ?? send.thread_id,
-          sent_at: new Date().toISOString(),
-          delivered: true
-        });
-        sent++;
-        remaining--;
+    if (row.channel === "email" && email) {
+      if (client.gmail_access) {
+        sendResult = await sendViaGmail(
+          client.gmail_access as string,
+          email,
+          row.subject as string,
+          row.body as string
+        );
+      } else if (client.smtp_host) {
+        sendResult = await sendViaSmtp(client, email, row.subject as string, row.body as string);
+      } else {
+        // No sender configured — mark as needs_sender so UI can flag it
+        await sb.from("outreach_log")
+          .update({ status: "needs_sender" })
+          .eq("id", row.id);
+        skipped++;
+        continue;
       }
+    } else if (row.channel === "sms" && lead.phone) {
+      // SMS follow-ups — mark pending, handled by send-sms function
+      await sb.from("outreach_log").update({ status: "needs_sender" }).eq("id", row.id);
+      skipped++;
+      continue;
+    } else {
+      // No contact info — skip
+      await sb.from("outreach_log").update({ status: "failed" }).eq("id", row.id);
+      skipped++;
+      continue;
+    }
+
+    if (sendResult.ok) {
+      // Update to sent
+      await sb.from("outreach_log").update({
+        status: "sent",
+        sent_at: new Date().toISOString(),
+        delivered: true,
+        ...(sendResult.thread_id ? { thread_id: sendResult.thread_id } : {})
+      }).eq("id", row.id);
+
+      // Update lead stage to 'contacted'
+      await sb.from("leads")
+        .update({ stage: "contacted", updated_at: new Date().toISOString() })
+        .eq("id", row.lead_id);
+
+      sent++;
+    } else {
+      // Log failure but keep as scheduled — will retry next hour
+      console.error(`[follow-up-engine] Failed to send ${row.id}:`, sendResult.error);
+      // After 3 attempts give up — for now just leave as scheduled
     }
   }
 
-  return sent;
+  return { sent, skipped, cap_remaining: remaining - sent };
 }
 
-async function generateFollowUp(client: Record<string, unknown>, lead: Record<string, unknown>, day: number, variation: string): Promise<{ subject: string; body: string }> {
-  const templates: Record<number, string> = {
-    3:  `Write a short Day 3 follow-up email for ${lead.business_name as string} (${lead.niche as string} in ${lead.city as string}). Angle: add value, ask one specific question. Variant ${variation} angle: ${variation === 'A' ? 'ROI focus' : variation === 'B' ? 'pain point' : 'social proof'}. Under 80 words. No fluff. Start with "Re: " implied by thread. Return JSON: {"subject":"Re: [original subject]","body":"..."}`,
-    7:  `Write a Day 7 follow-up email sharing a brief case study for ${lead.business_name as string} (${lead.niche as string}). One result from a similar business. Under 100 words. Return JSON: {"subject":"Case study for ${lead.niche as string} owners","body":"..."}`,
-    14: `Write a Day 14 breakup email to ${lead.business_name as string}. Tone: respectful final message, leave door open, no pressure. Under 60 words. Return JSON: {"subject":"Last one from me","body":"..."}`
-  };
-
-  const hasAI = (client.gemini_key || client.claude_key || client.openai_key) as string;
-  if (!hasAI) return { subject: `Following up`, body: `Hi! Just wanted to follow up on my previous message about your website. Let me know if you'd like to chat.` };
-
+// ── Gmail sender ─────────────────────────────────────────────────
+async function sendViaGmail(
+  accessToken: string,
+  to: string,
+  subject: string,
+  body: string
+): Promise<{ ok: boolean; thread_id?: string; error?: string }> {
   try {
-    const raw = await callAI(templates[day], 'Return only valid JSON with subject and body.', client as Record<string, string>);
-    return JSON.parse(raw);
-  } catch {
-    return { subject: day === 14 ? 'Last one from me' : 'Following up', body: `Hi! Wanted to follow up about your website. Interested in a quick chat?` };
+    const raw = buildRawEmail(to, subject, body);
+    const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ raw })
+    });
+
+    if (res.status === 401) {
+      return { ok: false, error: "Gmail token expired — reconnect in Credentials" };
+    }
+    if (!res.ok) {
+      const e = await res.text();
+      return { ok: false, error: `Gmail error ${res.status}: ${e.slice(0, 200)}` };
+    }
+
+    const data = await res.json();
+    return { ok: true, thread_id: data.threadId };
+  } catch (e) {
+    return { ok: false, error: String(e) };
   }
 }
 
-async function sendFollowUpEmail(client: Record<string, unknown>, lead: Record<string, unknown>, copy: { subject: string; body: string }, day: number, threadId: string | null): Promise<{ threadId?: string } | null> {
-  const oauthToken = client.gmail_access as string;
-  if (!oauthToken || !lead.email) return null;
+// ── SMTP sender (future — placeholder) ──────────────────────────
+async function sendViaSmtp(
+  _client: Record<string, unknown>,
+  _to: string,
+  _subject: string,
+  _body: string
+): Promise<{ ok: boolean; error?: string }> {
+  // Supabase Edge Functions can't open raw TCP sockets.
+  // SMTP would need a relay like Resend or SendGrid.
+  // Mark as needs_sender for now — Phase 4 (Stripe) will add Resend.
+  return { ok: false, error: "SMTP via relay not yet configured — connect Gmail or add Resend key" };
+}
 
-  const to = lead.email as string;
-  const raw = btoa([
+// ── Email builder ─────────────────────────────────────────────────
+function buildRawEmail(to: string, subject: string, body: string): string {
+  const msg = [
     `To: ${to}`,
-    `Subject: ${copy.subject}`,
-    'Content-Type: text/plain; charset=utf-8',
-    ...(threadId ? [`In-Reply-To: ${threadId}`, `References: ${threadId}`] : []),
-    '',
-    copy.body,
-    '',
-    '---',
-    'To unsubscribe reply STOP'
-  ].join('\r\n')).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    `Subject: ${subject}`,
+    "Content-Type: text/plain; charset=utf-8",
+    "MIME-Version: 1.0",
+    "",
+    body,
+    "",
+    "---",
+    "To unsubscribe from these emails, reply STOP."
+  ].join("\r\n");
 
-  const payload: Record<string, string> = { raw };
-  if (threadId) payload.threadId = threadId;
-
-  const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${oauthToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-
-  if (res.status === 401) {
-    console.error('[follow-up] Gmail token expired for client', client.id);
-    return null;
-  }
-  if (!res.ok) return null;
-
-  const data = await res.json();
-  return { threadId: data.threadId };
+  return btoa(msg).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
