@@ -136,6 +136,42 @@
       top: 20%; right: 8%; pointer-events: none; border-radius: 50%; z-index: 0;
     }
     .main { position: relative; z-index: 1; }
+
+    /* ── Claude status card ── */
+    .claude-card {
+      background: linear-gradient(135deg, rgba(99,102,241,.08), rgba(139,92,246,.05));
+      border: 1px solid rgba(99,102,241,.2);
+      border-radius: 14px; padding: 20px 24px; margin-top: 20px;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 4px 20px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.06);
+    }
+    .claude-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .claude-avatar {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; box-shadow: 0 0 16px rgba(99,102,241,.4);
+      flex-shrink: 0;
+    }
+    .claude-pulse {
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6366f1;
+      animation: cpulse 1.6s infinite; margin-right: 6px;
+    }
+    .claude-pulse.idle { background: #475569; animation: none; }
+    @keyframes cpulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.3;transform:scale(.7)} }
+    .client-brain-feed {
+      max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;
+      scrollbar-width: thin; scrollbar-color: rgba(99,102,241,.3) transparent;
+    }
+    .client-brain-feed::-webkit-scrollbar { width: 3px; }
+    .client-brain-feed::-webkit-scrollbar-thumb { background: rgba(99,102,241,.3); border-radius: 3px; }
+    .cbmsg {
+      font-size: 12.5px; line-height: 1.5; color: #c7d2fe;
+      padding: 6px 10px; border-radius: 8px;
+      background: rgba(255,255,255,.03); border-left: 2px solid rgba(99,102,241,.4);
+    }
+    .cbmsg.success { border-color: #10b981; color: #6ee7b7; }
+    .cbmsg.insight { border-color: #f472b6; color: #fbcfe8; }
   </style>
 </head>
 <body>
@@ -186,6 +222,27 @@ document.getElementById('app').innerHTML = `
       <div class="card">
         <div class="card-title">📋 Recent Campaign Activity</div>
         <div id="activity">${skeleton(3)}</div>
+      </div>
+
+      <!-- Claude Super Brain status -->
+      <div class="claude-card">
+        <div class="claude-header">
+          <div class="claude-avatar">🧠</div>
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#f1f5f9">Claude Super Brain</div>
+            <div style="font-size:12px;color:#94a3b8">
+              <span class="claude-pulse idle" id="cpulse"></span>
+              <span id="claude-status-text">Idle — waiting for next run</span>
+            </div>
+          </div>
+          <span id="claude-pill" style="margin-left:auto;font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;
+                background:rgba(71,85,105,.2);color:#94a3b8;border:1px solid rgba(71,85,105,.3);white-space:nowrap">● IDLE</span>
+        </div>
+        <div class="client-brain-feed" id="clientBrainFeed">
+          <div class="cbmsg" style="color:var(--color-text-muted)">
+            Claude will report its findings here when running your campaign.
+          </div>
+        </div>
       </div>
 
     </div>
@@ -251,6 +308,85 @@ function renderActivity(runList) {
     }).join('');
 }
 renderActivity(runs);
+
+// ── Claude Super Brain live status ────────────────────────────
+(async () => {
+  try {
+    const latestRun = runs[0];
+    if (latestRun) {
+      // Load recent chat messages for this run
+      const { data: chatRows } = await _sb.from('pipeline_chat')
+        .select('*')
+        .eq('run_id', latestRun.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (chatRows && chatRows.length > 0) {
+        const feed = document.getElementById('clientBrainFeed');
+        if (feed) {
+          feed.innerHTML = '';
+          chatRows.reverse().forEach(addClientBrainMsg);
+          feed.scrollTop = feed.scrollHeight;
+        }
+        if (['running', 'paused_approval'].includes(latestRun.status)) {
+          setClaudeStatus(latestRun.agent_message || 'Working on your leads…', latestRun.status === 'running');
+        }
+      }
+
+      // Subscribe to realtime updates
+      _sb.channel('client-brain-' + clientId)
+        .on('postgres_changes', {
+          event: 'INSERT', schema: 'public', table: 'pipeline_chat',
+          filter: `client_id=eq.${clientId}`
+        }, payload => {
+          addClientBrainMsg(payload.new);
+          const feed = document.getElementById('clientBrainFeed');
+          if (feed) feed.scrollTop = feed.scrollHeight;
+        })
+        .on('postgres_changes', {
+          event: 'UPDATE', schema: 'public', table: 'pipeline_runs',
+          filter: `client_id=eq.${clientId}`
+        }, payload => {
+          const run = payload.new;
+          if (run.agent_message) setClaudeStatus(run.agent_message, run.status === 'running');
+          if (run.status === 'paused_approval') {
+            setClaudeStatus('✅ Done! Your leads are ready for review.', false);
+            const pill = document.getElementById('claude-pill');
+            if (pill) { pill.textContent = '✅ DONE'; pill.style.background = 'rgba(16,185,129,.15)'; pill.style.color = '#34d399'; }
+          }
+        })
+        .subscribe();
+    }
+  } catch (e) { console.warn('[client brain]', e); }
+})();
+
+function addClientBrainMsg(row) {
+  const feed = document.getElementById('clientBrainFeed');
+  if (!feed) return;
+  const placeholder = feed.querySelector('[style*="color:var(--color-text-muted)"]');
+  if (placeholder) placeholder.remove();
+  const cls = ['success','insight'].includes(row.type) ? row.type : '';
+  const icon = { info:'ℹ️', success:'✅', warning:'⚠️', insight:'💡', error:'❌' }[row.type] || 'ℹ️';
+  const time = new Date(row.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const div = document.createElement('div');
+  div.className = 'cbmsg' + (cls ? ' ' + cls : '');
+  div.innerHTML = `<span style="opacity:.5;margin-right:6px;font-size:10px">${time}</span>${icon} ${row.message}`;
+  feed.appendChild(div);
+}
+
+function setClaudeStatus(msg, isRunning) {
+  const text  = document.getElementById('claude-status-text');
+  const pulse = document.getElementById('cpulse');
+  const pill  = document.getElementById('claude-pill');
+  if (text)  text.textContent  = msg;
+  if (pulse) pulse.className   = isRunning ? 'claude-pulse' : 'claude-pulse idle';
+  if (pill && isRunning) {
+    pill.textContent = '● LIVE';
+    pill.style.background = 'rgba(99,102,241,.15)';
+    pill.style.color = '#818cf8';
+    pill.style.borderColor = 'rgba(99,102,241,.3)';
+  }
+}
 </script>
 </body>
 </html>

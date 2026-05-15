@@ -165,6 +165,35 @@
 
     /* ── Loader bar accent ── */
     #af-loader { background: linear-gradient(90deg, var(--d-accent), #a78bfa) !important; }
+
+    /* ── Super Brain feed ── */
+    .brain-feed {
+      height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+      scrollbar-width: thin; scrollbar-color: rgba(99,102,241,.3) transparent;
+    }
+    .brain-feed::-webkit-scrollbar { width: 4px; }
+    .brain-feed::-webkit-scrollbar-thumb { background: rgba(99,102,241,.3); border-radius: 4px; }
+    .brain-msg {
+      padding: 8px 12px; border-radius: 10px; font-size: 12.5px; line-height: 1.5;
+      border-left: 3px solid transparent; background: rgba(255,255,255,.03);
+    }
+    .brain-msg-info    { border-color: #6366f1; color: #c7d2fe; }
+    .brain-msg-success { border-color: #10b981; color: #6ee7b7; background: rgba(16,185,129,.05); }
+    .brain-msg-warning { border-color: #f59e0b; color: #fcd34d; background: rgba(245,158,11,.05); }
+    .brain-msg-insight { border-color: #f472b6; color: #fbcfe8; background: rgba(244,114,182,.05); }
+    .brain-msg-error   { border-color: #ef4444; color: #fca5a5; background: rgba(239,68,68,.05); }
+    .brain-status-bar {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border-radius: 8px;
+      background: rgba(99,102,241,.07); border: 1px solid rgba(99,102,241,.15);
+      font-size: 12px; color: #a5b4fc; margin-bottom: 10px;
+    }
+    .brain-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: #6366f1;
+      flex-shrink: 0; animation: brainPulse 1.5s infinite;
+    }
+    @keyframes brainPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.8)} }
+    .brain-dot.idle { background: #475569; animation: none; }
   </style>
 </head>
 <body>
@@ -211,6 +240,32 @@ document.getElementById('app').innerHTML = `
       <div class="card">
         <div class="card-title">🎯 Pipeline Stage Funnel</div>
         <div id="stageFunnel">${skeleton(2)}</div>
+      </div>
+      <div class="card" style="margin-top:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div class="card-title" style="margin-bottom:0;padding-bottom:0;border-bottom:none">🧠 Claude Super Brain — Live Activity</div>
+          <span id="brain-live-pill" style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;
+                background:rgba(71,85,105,.2);color:#94a3b8;border:1px solid rgba(71,85,105,.3)">● IDLE</span>
+        </div>
+        <div id="brain-status-bar" class="brain-status-bar" style="display:none">
+          <div class="brain-dot" id="brain-dot"></div>
+          <span id="brain-status-text">Starting…</span>
+        </div>
+        <div class="brain-feed" id="brainFeed">
+          <div class="brain-msg brain-msg-info" style="color:var(--color-text-muted)">
+            Super Brain will appear here when a pipeline is running. <a href="/admin/pipeline.html" style="color:#818cf8">Start a run →</a>
+          </div>
+        </div>
+      </div>
+      <div class="dash-two-col" style="margin-top:0">
+        <div class="card">
+          <div class="card-title">📅 Follow-up Queue</div>
+          <div id="followUpQueue" style="min-height:60px"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">🧠 Niche Memory</div>
+          <div id="nicheMemoryPanel" style="min-height:60px"></div>
+        </div>
       </div>
     </div>
   </main>`;
@@ -357,6 +412,93 @@ _sb.channel('rt-dashboard')
   .on('postgres_changes', { event: '*', schema: 'public', table: 'leads',            filter: `client_id=eq.${clientId}` }, scheduleRefresh)
   .subscribe();
 
+// ── Super Brain Live Feed ─────────────────────────────────────
+(async () => {
+  try {
+    // Load latest run's chat messages
+    const latestRun = runs[0];
+    if (latestRun) {
+      // Fetch latest pipeline_chat for most recent run
+      const { data: chatRows } = await _sb.from('pipeline_chat')
+        .select('*')
+        .eq('run_id', latestRun.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (chatRows && chatRows.length > 0) {
+        const feed = document.getElementById('brainFeed');
+        feed.innerHTML = '';
+        chatRows.reverse().forEach(row => appendBrainMsg(row));
+
+        // Show status bar if run is active
+        if (['running', 'paused_approval'].includes(latestRun.status)) {
+          setBrainActive(latestRun.agent_message || latestRun.current_node || 'Working…', latestRun.status === 'running');
+        }
+      }
+
+      // Subscribe to new chat messages for any run of this client
+      _sb.channel('brain-feed-' + clientId)
+        .on('postgres_changes', {
+          event: 'INSERT', schema: 'public', table: 'pipeline_chat',
+          filter: `client_id=eq.${clientId}`
+        }, payload => {
+          appendBrainMsg(payload.new);
+          const feed = document.getElementById('brainFeed');
+          if (feed) feed.scrollTop = feed.scrollHeight;
+        })
+        .on('postgres_changes', {
+          event: 'UPDATE', schema: 'public', table: 'pipeline_runs',
+          filter: `client_id=eq.${clientId}`
+        }, payload => {
+          const run = payload.new;
+          if (run.agent_message) setBrainActive(run.agent_message, run.status === 'running');
+          if (run.status === 'paused_approval') {
+            setBrainActive('✅ Pipeline complete — leads ready for review', false);
+            const pill = document.getElementById('brain-live-pill');
+            if (pill) { pill.textContent = '✅ DONE'; pill.style.background = 'rgba(16,185,129,.15)'; pill.style.color = '#34d399'; }
+          }
+        })
+        .subscribe();
+    }
+  } catch (e) {
+    console.warn('[brain feed]', e);
+  }
+})();
+
+function appendBrainMsg(row) {
+  const feed = document.getElementById('brainFeed');
+  if (!feed) return;
+  // Clear placeholder
+  const placeholder = feed.querySelector('[style*="color:var(--color-text-muted)"]');
+  if (placeholder) placeholder.remove();
+
+  const cls = `brain-msg brain-msg-${row.type || 'info'}`;
+  const icon = { info:'ℹ️', success:'✅', warning:'⚠️', insight:'💡', error:'❌' }[row.type] || 'ℹ️';
+  const time = new Date(row.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const div = document.createElement('div');
+  div.className = cls;
+  div.innerHTML = `<span style="font-size:10px;opacity:.5;margin-right:6px">${time}</span>${icon} ${row.message}`;
+  feed.appendChild(div);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function setBrainActive(msg, isRunning) {
+  const bar = document.getElementById('brain-status-bar');
+  const dot = document.getElementById('brain-dot');
+  const text = document.getElementById('brain-status-text');
+  const pill = document.getElementById('brain-live-pill');
+  if (!bar) return;
+  bar.style.display = 'flex';
+  if (text) text.textContent = msg;
+  if (dot) { dot.className = isRunning ? 'brain-dot' : 'brain-dot idle'; }
+  if (pill && isRunning) {
+    pill.textContent = '● LIVE';
+    pill.style.background = 'rgba(99,102,241,.15)';
+    pill.style.color = '#818cf8';
+    pill.style.borderColor = 'rgba(99,102,241,.3)';
+  }
+}
+
 // Solver errors
 if (runs.length > 0) {
   const latestRun = runs[0];
@@ -370,6 +512,84 @@ if (runs.length > 0) {
       </div>`;
   }
 }
+
+// ── Follow-up Queue ──────────────────────────────────────────────
+(async () => {
+  try {
+    const { data: scheduled } = await _sb.from('outreach_log')
+      .select('id,subject,body,scheduled_at,follow_up_seq,status,leads(business_name,email,phone)')
+      .eq('client_id', clientId)
+      .eq('status', 'scheduled')
+      .not('scheduled_at', 'is', null)
+      .order('scheduled_at', { ascending: true })
+      .limit(8);
+
+    const el = document.getElementById('followUpQueue');
+    if (!el) return;
+    if (!scheduled || scheduled.length === 0) {
+      el.innerHTML = `<p style="color:var(--color-text-muted);font-size:13px">No scheduled follow-ups yet.<br>Follow-ups are created automatically after each pipeline run.</p>`;
+      return;
+    }
+    const dayLabels = ['—', 'Day 3', 'Day 7', 'Day 14'];
+    const now = Date.now();
+    el.innerHTML = scheduled.map(row => {
+      const dueDate   = new Date(row.scheduled_at);
+      const daysUntil = Math.ceil((dueDate - now) / 86400000);
+      const dueLabel  = daysUntil <= 0 ? '<span style="color:#f87171;font-weight:700">Due now</span>'
+                      : daysUntil === 1 ? '<span style="color:#fcd34d">Tomorrow</span>'
+                      : `<span style="color:#94a3b8">In ${daysUntil}d</span>`;
+      const seqLabel  = dayLabels[row.follow_up_seq] ?? `Seq ${row.follow_up_seq}`;
+      const biz       = row.leads?.business_name ?? 'Unknown';
+      return `<div style="display:flex;justify-content:space-between;align-items:center;
+                          padding:9px 8px;border-bottom:1px solid var(--d-border);
+                          border-radius:6px;gap:8px;transition:background .15s"
+                   onmouseover="this.style.background='rgba(99,102,241,.05)'"
+                   onmouseout="this.style.background=''">
+        <div style="min-width:0">
+          <div style="font-size:13px;font-weight:600;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${biz}</div>
+          <div style="font-size:11px;color:#64748b">${seqLabel} follow-up</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;font-size:12px">${dueLabel}</div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    const el = document.getElementById('followUpQueue');
+    if (el) el.innerHTML = `<p style="color:#64748b;font-size:12px">Follow-up table loading…<br>(Run migration 006 if this persists)</p>`;
+  }
+})();
+
+// ── Niche Memory Panel ───────────────────────────────────────────
+(async () => {
+  try {
+    const { data: memories } = await _sb.from('niche_memory')
+      .select('niche,city,state,avg_score,runs_count,notes,pain_signals,updated_at')
+      .eq('client_id', clientId)
+      .order('updated_at', { ascending: false })
+      .limit(5);
+
+    const el = document.getElementById('nicheMemoryPanel');
+    if (!el) return;
+    if (!memories || memories.length === 0) {
+      el.innerHTML = `<p style="color:var(--color-text-muted);font-size:13px">No niche memory yet.<br>After your first pipeline run, Claude will save what it learned here for smarter future runs.</p>`;
+      return;
+    }
+    el.innerHTML = memories.map(m => {
+      const scoreColor = m.avg_score >= 8 ? '#6ee7b7' : m.avg_score >= 6 ? '#fcd34d' : '#f87171';
+      return `<div style="padding:10px 0;border-bottom:1px solid var(--d-border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span style="font-size:13px;font-weight:700;color:#f1f5f9">${m.niche} · ${m.city}${m.state ? ', '+m.state : ''}</span>
+          <span style="font-size:11px;font-weight:700;color:${scoreColor}">avg ${m.avg_score}/10</span>
+        </div>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:4px">${m.runs_count} run${m.runs_count !== 1 ? 's' : ''} · last: ${new Date(m.updated_at).toLocaleDateString()}</div>
+        ${m.notes ? `<div style="font-size:12px;color:#a5b4fc;font-style:italic">"${m.notes}"</div>` : ''}
+        ${m.pain_signals?.length ? `<div style="margin-top:4px">${m.pain_signals.slice(0,2).map(s => `<span style="font-size:10px;background:rgba(99,102,241,.12);color:#818cf8;padding:2px 7px;border-radius:10px;margin-right:4px;display:inline-block">${s}</span>`).join('')}</div>` : ''}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    const el = document.getElementById('nicheMemoryPanel');
+    if (el) el.innerHTML = `<p style="color:#64748b;font-size:12px">Niche memory loading…<br>(Run migration 006 if this persists)</p>`;
+  }
+})();
 </script>
 </body>
 </html>

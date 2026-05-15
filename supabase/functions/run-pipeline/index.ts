@@ -1,8 +1,10 @@
 // ================================================================
-// AutoFlow v7 — run-pipeline  (Claude Super Brain)
-// Claude is the entire pipeline: finds businesses, enriches contact
-// info across ALL channels, qualifies, writes outreach, reports live.
-// External APIs replaced by Claude tool-use + Brave Search.
+// AutoFlow v7 — run-pipeline  (Claude Super Brain — All 5 Phases)
+// Phase 1: Claude tool-use agentic loop
+// Phase 2: Intent-based scoring + review gap detection
+// Phase 3: 3-touch follow-up scheduling (Day 3 / 7 / 14)
+// Phase 4: AI Mini-Audit block in every outreach email
+// Phase 5: Niche memory — Claude learns what works per niche
 // ================================================================
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { getAdminClient, CORS } from "../_shared/helpers.ts";
@@ -33,7 +35,7 @@ const TOOLS = [
   },
   {
     name: "save_lead",
-    description: "Save a qualified lead with full contact info and personalized outreach. Only call this for leads scoring 6 or above.",
+    description: "Save a qualified lead. Automatically schedules Day 3, 7, 14 follow-ups and generates a mini-audit block for the email. Only call for leads scoring 6+.",
     input_schema: {
       type: "object",
       properties: {
@@ -45,8 +47,21 @@ const TOOLS = [
         address:        { type: "string" },
         score:          { type: "number", description: "1-10 qualification score" },
         score_reason:   { type: "string", description: "Why this score, 1-2 sentences" },
+        audit_data: {
+          type: "object",
+          description: "Mini-audit findings: { review_count, review_rating, competitor_name, competitor_reviews, social_missing, website_year, top_fix }",
+          properties: {
+            review_count:       { type: "number", description: "Their actual Google review count" },
+            review_rating:      { type: "number", description: "Their Google rating 1-5" },
+            competitor_name:    { type: "string", description: "Top local competitor name" },
+            competitor_reviews: { type: "number", description: "Competitor review count" },
+            social_missing:     { type: "string", description: "e.g. 'No Instagram, Facebook last active 2019'" },
+            website_year:       { type: "number", description: "Estimated year website was built" },
+            top_fix:            { type: "string", description: "Single highest-impact improvement" }
+          }
+        },
         email_subject:  { type: "string" },
-        email_body:     { type: "string", description: "Personalized email, under 200 words" },
+        email_body:     { type: "string", description: "Personalized email (200 words). Must include the mini-audit block shown in your instructions." },
         channels: {
           type: "array",
           items: { type: "string" },
@@ -57,7 +72,7 @@ const TOOLS = [
           description: "Social URLs: { linkedin: 'url', facebook: 'url', instagram: 'url' }"
         }
       },
-      required: ["business_name", "score", "score_reason", "email_subject", "email_body", "channels"]
+      required: ["business_name", "score", "score_reason", "audit_data", "email_subject", "email_body", "channels"]
     }
   },
   {
@@ -90,8 +105,73 @@ const TOOLS = [
       },
       required: ["message", "type"]
     }
+  },
+  {
+    name: "save_niche_insights",
+    description: "CALL THIS AT THE END OF EVERY RUN. Save what you learned about this niche so the next run starts smarter.",
+    input_schema: {
+      type: "object",
+      properties: {
+        pain_signals: {
+          type: "array",
+          items: { type: "string" },
+          description: "Top pain signals found in this niche, e.g. ['Most dentists have <30 reviews', 'Instagram rarely used', 'Websites often 5+ years old']"
+        },
+        best_queries: {
+          type: "array",
+          items: { type: "string" },
+          description: "Search queries that returned the best leads, e.g. ['dentists Austin reviews site:yelp.com', 'Austin dental office near me']"
+        },
+        avg_score:    { type: "number", description: "Average qualification score of leads found this run" },
+        notes:        { type: "string", description: "1-2 sentence summary of what works in this niche+city combination" }
+      },
+      required: ["pain_signals", "best_queries", "avg_score", "notes"]
+    }
   }
 ];
+
+// ── Follow-up email templates (Phase 3) ──────────────────────────
+function makeFollowUpEmails(businessName: string, ownerName: string | null, niche: string, city: string): Array<{seq: number; days: number; subject: string; body: string}> {
+  const name = ownerName ? ` ${ownerName}` : "";
+  return [
+    {
+      seq: 1, days: 3,
+      subject: `Quick follow-up — ${businessName}`,
+      body: `Hi${name},\n\nI reached out a few days ago about helping ${businessName} get more ${niche} clients in ${city}.\n\nJust wanted to make sure my message didn't get buried. The gap I spotted between you and your top local competitor is one we fix consistently — usually within 30 days.\n\nIs there a better time to connect this week?\n\n— AutoFlow AI`
+    },
+    {
+      seq: 2, days: 7,
+      subject: `Last try — ${businessName} growth opportunity`,
+      body: `Hi${name},\n\nI don't want to keep filling your inbox, so this will be my last message.\n\nWe've helped ${niche} businesses in ${city} increase monthly leads by 30-60% using AI-powered review management + outreach. The businesses that act first in their area tend to lock in the advantage.\n\nIf the timing ever makes sense, I'm at your service.\n\n— AutoFlow AI`
+    },
+    {
+      seq: 3, days: 14,
+      subject: `${businessName} — one more thought`,
+      body: `Hi${name},\n\nProbably not the right time — and that's totally fine.\n\nI'll leave this here: if you ever want a free 10-minute audit of your online presence vs. your top ${city} competitors, just reply and I'll put it together.\n\nNo pitch. Just data.\n\n— AutoFlow AI`
+    }
+  ];
+}
+
+// ── Mini-audit block builder (Phase 4) ───────────────────────────
+function buildAuditBlock(auditData: Record<string,unknown>, businessName: string): string {
+  const rc  = auditData.review_count    as number | undefined;
+  const rr  = auditData.review_rating   as number | undefined;
+  const cn  = auditData.competitor_name as string | undefined;
+  const cr  = auditData.competitor_reviews as number | undefined;
+  const sm  = auditData.social_missing  as string | undefined;
+  const wy  = auditData.website_year    as number | undefined;
+  const tf  = auditData.top_fix         as string | undefined;
+
+  let block = `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📊 QUICK AUDIT — ${businessName}\n`;
+  if (rc != null) block += `⭐ Reviews: ${rc}${rr ? ` (${rr}/5)` : ""}`;
+  if (cn && cr != null) block += ` vs. ${cn}: ${cr} reviews — you're losing ~${Math.round((cr - (rc ?? 0)) * 0.04)} clients/month to them`;
+  block += "\n";
+  if (sm) block += `📱 Social: ${sm}\n`;
+  if (wy) block += `🌐 Website: Est. ${wy} — needs refresh\n`;
+  if (tf) block += `🎯 Quickest win: ${tf}\n`;
+  block += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  return block;
+}
 
 // ── Main handler ─────────────────────────────────────────────────
 serve(async (req) => {
@@ -120,6 +200,33 @@ serve(async (req) => {
       });
     }
 
+    // ── Phase 5: Load niche memory ─────────────────────────────
+    const { data: nicheMemory } = await sb.from("niche_memory")
+      .select("*")
+      .eq("client_id", client_id)
+      .ilike("niche", niche)
+      .ilike("city", city)
+      .single();
+
+    let nicheMemoryBlock = "";
+    if (nicheMemory?.notes) {
+      nicheMemoryBlock = `\n\n═══════════════════════════════
+🧠 NICHE MEMORY (from ${nicheMemory.runs_count} previous run${nicheMemory.runs_count > 1 ? "s" : ""} in this exact niche+city)
+What you learned last time:
+${nicheMemory.notes}
+
+Top pain signals in this niche:
+${(nicheMemory.pain_signals || []).map((s: string) => `• ${s}`).join("\n")}
+
+Search queries that found the best leads:
+${(nicheMemory.best_queries || []).map((q: string) => `• ${q}`).join("\n")}
+
+Previous avg lead score: ${nicheMemory.avg_score}/10
+
+Use this intel from the first search — start with the query patterns that worked.
+═══════════════════════════════`;
+    }
+
     // Mark run as started
     await sb.from("pipeline_runs").update({
       status: "running", current_node: "SuperBrain",
@@ -128,6 +235,57 @@ serve(async (req) => {
 
     // ── Tool implementations ──────────────────────────────────
 
+    // DuckDuckGo HTML scraping — free, no API key needed
+    const searchDuckDuckGo = async (query: string): Promise<string> => {
+      try {
+        const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=us-en`;
+        const r = await fetch(url, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5"
+          },
+          signal: AbortSignal.timeout(15000)
+        });
+        if (!r.ok) return JSON.stringify({ error: `DuckDuckGo returned ${r.status}` });
+        const html = await r.text();
+
+        const results: Array<{ title: string; url: string; snippet: string }> = [];
+        const titleRe   = /<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+        const snippetRe = /<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
+
+        const titles: Array<{ url: string; title: string }> = [];
+        const snippets: string[] = [];
+
+        let tm;
+        while ((tm = titleRe.exec(html)) !== null && titles.length < 15) {
+          const rawUrl = tm[1];
+          const title  = tm[2].replace(/<[^>]+>/g, "").trim();
+          let cleanUrl = rawUrl;
+          try {
+            const u = new URL(rawUrl.startsWith("http") ? rawUrl : "https://duckduckgo.com" + rawUrl);
+            const uddg = u.searchParams.get("uddg");
+            if (uddg) cleanUrl = decodeURIComponent(uddg);
+          } catch (_) { /* keep as-is */ }
+          if (title && cleanUrl.startsWith("http")) titles.push({ url: cleanUrl, title });
+        }
+
+        let sm;
+        while ((sm = snippetRe.exec(html)) !== null && snippets.length < 15) {
+          snippets.push(sm[1].replace(/<[^>]+>/g, "").trim());
+        }
+
+        for (let i = 0; i < Math.min(titles.length, 10); i++) {
+          results.push({ title: titles[i].title, url: titles[i].url, snippet: snippets[i] || "" });
+        }
+
+        if (results.length === 0) return JSON.stringify({ error: "No results parsed from DuckDuckGo" });
+        return JSON.stringify(results);
+      } catch (e) {
+        return JSON.stringify({ error: `DuckDuckGo failed: ${String(e)}` });
+      }
+    };
+
     const searchWeb = async (query: string): Promise<string> => {
       if (braveKey) {
         try {
@@ -135,25 +293,16 @@ serve(async (req) => {
             `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10&country=us`,
             { headers: { "Accept": "application/json", "X-Subscription-Token": braveKey } }
           );
-          const d = await r.json();
-          return JSON.stringify((d.web?.results || []).map((x: Record<string,string>) => ({
-            title: x.title, url: x.url, snippet: x.description
-          })));
-        } catch (e) { return JSON.stringify({ error: String(e) }); }
+          if (r.ok) {
+            const d = await r.json();
+            const results = (d.web?.results || []).map((x: Record<string,string>) => ({
+              title: x.title, url: x.url, snippet: x.description
+            }));
+            if (results.length > 0) return JSON.stringify(results);
+          }
+        } catch (_) { /* fall through to DuckDuckGo */ }
       }
-      // Fallback: Google Custom Search
-      const gKey = client?.google_places_key || Deno.env.get("GOOGLE_API_KEY") || "";
-      const cx   = Deno.env.get("GOOGLE_CSE_CX") || "";
-      if (gKey && cx) {
-        try {
-          const r = await fetch(`https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(query)}&key=${gKey}&cx=${cx}&num=10`);
-          const d = await r.json();
-          return JSON.stringify((d.items || []).map((x: Record<string,string>) => ({
-            title: x.title, url: x.link, snippet: x.snippet
-          })));
-        } catch (e) { return JSON.stringify({ error: String(e) }); }
-      }
-      return JSON.stringify({ error: "Add brave_search_key in Credentials to enable web search." });
+      return searchDuckDuckGo(query);
     };
 
     const fetchPage = async (url: string): Promise<string> => {
@@ -196,23 +345,55 @@ serve(async (req) => {
 
         if (le || !lead) return JSON.stringify({ error: le?.message ?? "Insert failed" });
 
-        // Email draft
+        // Phase 4: Build mini-audit block to attach to email
+        const auditData = (input.audit_data ?? {}) as Record<string,unknown>;
+        const auditBlock = buildAuditBlock(auditData, input.business_name as string);
+
+        // Initial email draft with audit block prepended
+        const emailBodyWithAudit = auditBlock + "\n" + (input.email_body as string);
         await sb.from("outreach_log").insert({
           lead_id: lead.id, client_id, run_id,
-          channel: "email",
-          subject: input.email_subject,
-          body:    input.email_body,
-          status:  "draft", sent_at: null
+          channel:      "email",
+          subject:      input.email_subject,
+          body:         emailBodyWithAudit,
+          status:       "draft",
+          sent_at:      null,
+          follow_up_seq: 0
         });
+
+        // Phase 3: Schedule 3-touch follow-up emails (Day 3 / 7 / 14)
+        const followUps = makeFollowUpEmails(
+          input.business_name as string,
+          input.owner_name as string | null,
+          niche, city
+        );
+        const now = Date.now();
+        for (const fu of followUps) {
+          const scheduled_at = new Date(now + fu.days * 24 * 60 * 60 * 1000).toISOString();
+          await sb.from("outreach_log").insert({
+            lead_id:       lead.id,
+            client_id,
+            run_id,
+            channel:       "email",
+            subject:       fu.subject,
+            body:          fu.body,
+            status:        "scheduled",
+            scheduled_at,
+            follow_up_seq: fu.seq,
+            sent_at:       null
+          });
+        }
 
         // SMS draft if phone found
         const channels = (input.channels as string[]) ?? [];
         if (input.phone && channels.includes("sms")) {
           await sb.from("outreach_log").insert({
             lead_id: lead.id, client_id, run_id,
-            channel: "sms",
-            body: `Hi${input.owner_name ? " " + input.owner_name : ""}! I help ${niche} in ${city} get more clients with AI. Worth a quick call? — AutoFlow`,
-            status: "draft", sent_at: null
+            channel:       "sms",
+            body:          `Hi${input.owner_name ? " " + input.owner_name : ""}! I help ${niche} in ${city} get more clients with AI. Worth a quick call? — AutoFlow`,
+            status:        "draft",
+            sent_at:       null,
+            follow_up_seq: 0
           });
         }
 
@@ -223,14 +404,60 @@ serve(async (req) => {
           emails_found:    (run?.emails_found     ?? 0) + (input.email ? 1 : 0)
         }).eq("id", run_id);
 
-        return JSON.stringify({ success: true, lead_id: lead.id });
+        return JSON.stringify({ success: true, lead_id: lead.id, follow_ups_scheduled: 3 });
+      } catch (e) { return JSON.stringify({ error: String(e) }); }
+    };
+
+    // Phase 5: Save niche insights at end of run
+    const saveNicheInsights = async (input: Record<string,unknown>): Promise<string> => {
+      try {
+        const painSignals  = (input.pain_signals  as string[]) ?? [];
+        const bestQueries  = (input.best_queries  as string[]) ?? [];
+        const avgScore     = (input.avg_score     as number)   ?? 0;
+        const notes        = (input.notes         as string)   ?? "";
+
+        // Upsert niche memory
+        const { data: existing } = await sb.from("niche_memory")
+          .select("id,runs_count,pain_signals,best_queries")
+          .eq("client_id", client_id)
+          .ilike("niche", niche)
+          .ilike("city", city)
+          .single();
+
+        if (existing) {
+          // Merge and deduplicate pain signals + queries
+          const mergedPain    = [...new Set([...(existing.pain_signals ?? []), ...painSignals])].slice(0, 20);
+          const mergedQueries = [...new Set([...(existing.best_queries ?? []), ...bestQueries])].slice(0, 15);
+          await sb.from("niche_memory").update({
+            pain_signals: mergedPain,
+            best_queries: mergedQueries,
+            avg_score:    Number(((existing.runs_count * (existing.avg_score ?? 0) + avgScore) / (existing.runs_count + 1)).toFixed(1)),
+            runs_count:   (existing.runs_count ?? 1) + 1,
+            last_run_id:  run_id,
+            notes,
+            updated_at:   new Date().toISOString()
+          }).eq("id", existing.id);
+        } else {
+          await sb.from("niche_memory").insert({
+            client_id, niche, city, state: state ?? null,
+            pain_signals: painSignals,
+            best_queries: bestQueries,
+            avg_score:    avgScore,
+            runs_count:   1,
+            last_run_id:  run_id,
+            notes
+          });
+        }
+
+        return JSON.stringify({ success: true, message: "Niche memory saved for next run" });
       } catch (e) { return JSON.stringify({ error: String(e) }); }
     };
 
     const executeTool = async (name: string, input: Record<string,unknown>): Promise<string> => {
-      if (name === "search_web")   return searchWeb(input.query as string);
-      if (name === "fetch_page")   return fetchPage(input.url as string);
-      if (name === "save_lead")    return saveLead(input);
+      if (name === "search_web")        return searchWeb(input.query as string);
+      if (name === "fetch_page")        return fetchPage(input.url as string);
+      if (name === "save_lead")         return saveLead(input);
+      if (name === "save_niche_insights") return saveNicheInsights(input);
       if (name === "send_message") {
         await sb.from("pipeline_chat").insert({
           run_id, client_id, role: "claude",
@@ -253,68 +480,103 @@ serve(async (req) => {
     };
 
     // ── System prompt ──────────────────────────────────────────
-    const systemPrompt = `You are AutoFlow's Claude Super Brain — an autonomous AI lead generation agent inside an AI marketing agency.
+    const systemPrompt = `You are AutoFlow's Claude Super Brain — an autonomous AI lead generation agent.
 
-MISSION: Find 15-20 high-quality ${niche} businesses in ${city}, ${state}. Build complete outreach packages via ALL available channels. You ARE the pipeline.
+MISSION: Find 15-20 high-quality ${niche} businesses in ${city}, ${state}. Build complete outreach packages. You ARE the pipeline — Claude API is the ONLY requirement.${nicheMemoryBlock}
 
-PROCESS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PROCESS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 PHASE 1 — DISCOVER
-Search for "${niche} ${city} ${state}" and 2-3 variations. Also try "${niche} near ${city}" and "${niche} ${city} reviews". Collect 25+ candidates with websites.
-→ Call send_message to tell user what you found.
-→ Call update_progress({node: "Discovering", message: "..."})
+Search for "${niche} ${city} ${state}" and 2-3 variations. Also try "${niche} near ${city}" and "${niche} ${city} reviews".${nicheMemory?.best_queries?.length ? " Start with the queries from Niche Memory above." : ""}
+→ send_message: what you found and how many candidates
+→ update_progress({node: "Discovering", message: "..."})
 
-PHASE 2 — INVESTIGATE
-For each candidate: fetch_page their website, /contact, /about pages.
-Find: owner name, email, phone, LinkedIn, Facebook, Instagram, Twitter.
-If no email on site: search_web for "[business name] email" or "[owner name] LinkedIn ${city}".
-→ Call send_message with interesting finds as you go.
+PHASE 2 — INVESTIGATE (for each candidate)
+• fetch_page website + /contact + /about pages
+• Find: owner name, email, phone, LinkedIn, Facebook, Instagram
+• If no email on site: search_web "[business name] email" or "[owner name] LinkedIn ${city}"
+• REVIEW GAP: search_web "[business name] ${city} reviews" — note their review COUNT and RATING
+  Compare to top local competitor. If competitor has 3× more reviews → HIGH-PRIORITY PAIN POINT
+• SOCIAL CHECK: note which platforms they're on or missing entirely
+• WEBSITE AGE: check footer copyright or design — estimate year built
+→ send_message("insight") for any business with <20 reviews + no social media — these are your BEST leads
 
-PHASE 3 — QUALIFY (score 1-10)
-8-10: Clear gap, easy to contact, medium/large business
-6-7: Some opportunity, at least one contact channel
-<6:  Skip — too small, no contact, saturated
-→ save_lead for every business scoring 6+
+PHASE 3 — QUALIFY BY INTENT (score 1-10)
+Score HIGH for INTENT SIGNALS — hungry buyers who NEED help:
+  9-10: Bad reviews (<3.5⭐ OR <20 reviews) + no/weak social + old website (pre-2020)
+  8:    Any TWO of: few reviews, no social, old website, competitor outranking them
+  7:    ONE clear gap + reachable contact + medium operation
+  6:    Some opportunity + at least one contact channel found
+  <6:   Skip
+DO NOT score high for business SIZE alone. Small dental office with 8 reviews = 9. Large chain with great reviews = 4.
 
-PHASE 4 — WRITE OUTREACH (for each saved lead)
-email_body MUST:
-• Reference ONE specific thing from their actual website
-• Name a real gap you spotted (old site, few reviews, no social)
-• Offer AutoFlow lead gen as the solution
-• End with "Worth a 15-min call this week?"
-• Under 200 words, no "hope this finds you well"
+PHASE 4 — SAVE EACH LEAD ≥6 with save_lead
+audit_data REQUIRED — fill in everything you found:
+  review_count, review_rating, competitor_name, competitor_reviews,
+  social_missing (e.g. "No Instagram, Facebook last active 2020"),
+  website_year (estimate), top_fix (single best improvement)
+
+email_body MUST follow this exact structure:
+  [opening line naming their SPECIFIC pain — their actual review count, missing platform, old site year]
+  [one comparison: "While [CompetitorName] has [X] reviews, you have [Y] — that's roughly [Z] clients/month going to them"]
+  [one sentence: what AutoFlow fixes + how fast]
+  [call to action: "Worth a 15-min call this week?"]
+
+  [AUDIT BLOCK — the system auto-generates this from audit_data, you write the email body above it]
+
+• Under 200 words
+• No "hope this finds you well"
+• No generic openers
 
 PHASE 5 — CHANNELS
-List ALL channels found in channels array: email, sms, linkedin, facebook, instagram, twitter
+List ALL channels in channels array: email, sms, linkedin, facebook, instagram, twitter
 Include all social URLs in social_links.
 
-COMMUNICATION:
-Use send_message constantly — you are talking directly to the business owner watching this live.
-Be specific: name businesses, give numbers, flag great opportunities with "insight" type.
-Update the dashboard every 3-4 leads via update_progress.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMMUNICATION — send_message throughout the run:
+• "info" — progress updates
+• "success" — strong lead found (name it + say why)
+• "warning" — issue encountered
+• "insight" — strategic finding about this niche (e.g. "Most ${niche} in ${city} have <25 reviews — huge opportunity")
+Update dashboard every 3-4 leads via update_progress.
 
-FINISH:
-After all leads saved → send_message with full summary (total found, qualified, channels breakdown, top 3 leads)
-→ update_progress({node: "paused_approval", message: "Ready for your review"})
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FINISH — after all leads saved:
+1. save_niche_insights — log what you learned:
+   • Top pain signals you saw (be specific: "7 of 10 had <30 reviews", "Instagram missing in 80% of cases")
+   • Best search queries that found leads
+   • Average score of leads found
+   • 1-2 sentence note for your next run in this niche
 
-Never invent contact info. Only save what you actually found.`;
+2. send_message with FULL SUMMARY:
+   Total candidates found → qualified → channels breakdown → top 3 leads with their specific gaps
+
+3. update_progress({node: "paused_approval", message: "✅ Ready for your review"})
+
+Never invent contact info or review counts. Only save what you actually found.`;
 
     // ── Agentic loop (background) ─────────────────────────────
     (async () => {
       try {
+        const memoryNote = nicheMemory
+          ? `🧠 Loading niche memory from ${nicheMemory.runs_count} previous run${nicheMemory.runs_count > 1 ? "s" : ""} in ${niche}/${city}. Starting smarter...`
+          : `🧠 Super Brain activated. First run in ${niche}/${city} — building niche knowledge. Searching now...`;
+
         await sb.from("pipeline_chat").insert({
           run_id, client_id, role: "claude",
-          message: `🧠 Super Brain activated. Starting mission: ${niche} businesses in ${city}, ${state}. Searching now...`,
+          message: memoryNote,
           type: "info"
         });
 
         const messages: Record<string,unknown>[] = [{
           role: "user",
-          content: `Execute your full mission: find and qualify ${niche} businesses in ${city}, ${state}. Report live as you work.`
+          content: `Execute your full mission: find and qualify ${niche} businesses in ${city}, ${state}. Save niche insights at the end. Report live as you work.`
         }];
 
         let iters = 0;
-        while (iters++ < 60) {
+        while (iters++ < 80) {
           const res = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: {
