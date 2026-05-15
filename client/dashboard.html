@@ -159,7 +159,11 @@ document.getElementById('app').innerHTML = `
   ${clientNav('Dashboard')}
   <main class="main">
     <div class="page-header">
-      <h1 class="page-title">Welcome back${clientRow?.name ? ', ' + clientRow.name : ''} 👋</h1>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <h1 class="page-title">Welcome back${clientRow?.name ? ', ' + clientRow.name : ''} 👋</h1>
+        <span id="rt-pill-client" style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;
+              background:rgba(16,185,129,.15);color:#34d399;border:1px solid rgba(16,185,129,.25);transition:color .4s">● LIVE</span>
+      </div>
       <p class="page-sub">Your AutoFlow campaign results — updated in real time</p>
     </div>
     <div class="page-body">
@@ -197,16 +201,38 @@ const totalQualified = history.reduce((s,r) => s + (r.leads_qualified ?? 0), 0);
 const avgContact     = history.length
   ? (history.reduce((s,r) => s + (r.contact_rate ?? 0), 0) / history.length).toFixed(1) : 0;
 
-document.getElementById('statsGrid').innerHTML = [
-  statCard('Leads Found',    totalLeads,          'all campaigns', '👥'),
-  statCard('Qualified',      totalQualified,      'score ≥ 6', '✅'),
-  statCard('Contact Rate',   avgContact + '%',    'emails + DMs', '📡'),
-  statCard('Campaigns Run',  runs.length,         'total runs', '⚡'),
-].join('');
+function renderStats(hist, runList) {
+  const tl = hist.reduce((s,r) => s + (r.leads_found ?? 0), 0);
+  const tq = hist.reduce((s,r) => s + (r.leads_qualified ?? 0), 0);
+  const ac = hist.length ? (hist.reduce((s,r) => s + (r.contact_rate ?? 0), 0) / hist.length).toFixed(1) : 0;
+  document.getElementById('statsGrid').innerHTML = [
+    statCard('Leads Found',   tl,          'all campaigns', '👥'),
+    statCard('Qualified',     tq,          'score ≥ 6',     '✅'),
+    statCard('Contact Rate',  ac + '%',    'emails + DMs',  '📡'),
+    statCard('Campaigns Run', runList.length, 'total runs', '⚡'),
+  ].join('');
+}
+renderStats(history, runs);
 
-document.getElementById('activity').innerHTML = runs.length === 0
+// ── Real-time: re-render stats + activity on any pipeline change ──
+import { supabase as _sb } from '/shared/auth.js';
+_sb.channel('rt-client-dash')
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'pipeline_runs', filter: `client_id=eq.${clientId}` }, async () => {
+    const [freshRuns, freshHist] = await Promise.all([
+      getRecentRuns(clientId, 5).catch(() => []),
+      getRunHistory(clientId, 10).catch(() => [])
+    ]);
+    renderStats(freshHist, freshRuns);
+    renderActivity(freshRuns);
+    const pill = document.getElementById('rt-pill-client');
+    if (pill) { pill.style.color = '#10b981'; setTimeout(() => { pill.style.color = '#34d399'; }, 1200); }
+  })
+  .subscribe();
+
+function renderActivity(runList) {
+  document.getElementById('activity').innerHTML = runList.length === 0
   ? `<p style="color:var(--color-text-muted);font-size:14px;padding:12px 0">No campaigns yet. Your team is setting things up — check back soon! 🚀</p>`
-  : runs.map(r => {
+  : runList.map(r => {
       const contactPct = r.contact_rate ? r.contact_rate.toFixed(1) + '%' : '—';
       const dotColor   = r.status === 'completed' ? '#10b981' : r.status === 'running' ? '#6366f1' : '#f59e0b';
       return `<div class="act-row">
@@ -223,6 +249,8 @@ document.getElementById('activity').innerHTML = runs.length === 0
         </div>
       </div>`;
     }).join('');
+}
+renderActivity(runs);
 </script>
 </body>
 </html>

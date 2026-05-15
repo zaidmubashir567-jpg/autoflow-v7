@@ -330,12 +330,101 @@ export function injectSharedCSS() {
       --shadow-md:         0 4px 12px rgba(0,0,0,.1);
     }
     [data-theme="dark"] {
-      --color-bg:          #0f172a;
-      --color-surface:     #1e293b;
-      --color-border:      #334155;
+      --color-bg:          #060614;
+      --color-surface:     #0d0d2b;
+      --color-border:      rgba(255,255,255,0.09);
       --color-text:        #f1f5f9;
       --color-text-muted:  #94a3b8;
+      --color-accent:      #6366f1;
+      --shadow:            0 2px 8px rgba(0,0,0,.5);
+      --shadow-md:         0 8px 32px rgba(0,0,0,.55);
     }
+    [data-theme="dark"] body {
+      background: #060614 !important;
+      background-image:
+        radial-gradient(ellipse 60% 50% at 20% -10%, rgba(99,102,241,.10), transparent),
+        radial-gradient(ellipse 40% 40% at 80% 90%, rgba(139,92,246,.07), transparent) !important;
+      background-attachment: fixed !important;
+    }
+    [data-theme="dark"] .sidebar {
+      background: rgba(4,4,18,0.96) !important;
+      border-right: 1px solid rgba(255,255,255,.08);
+      backdrop-filter: blur(20px);
+      box-shadow: 4px 0 24px rgba(0,0,0,.5);
+    }
+    [data-theme="dark"] .sidebar-brand { border-bottom-color: rgba(255,255,255,.08) !important; }
+    [data-theme="dark"] .brand-icon { font-size: 22px; filter: drop-shadow(0 0 8px rgba(99,102,241,.5)); }
+    [data-theme="dark"] .nav-item { color: rgba(255,255,255,.6) !important; }
+    [data-theme="dark"] .nav-item:hover { background: rgba(255,255,255,.05) !important; color: #fff !important; }
+    [data-theme="dark"] .nav-item.active {
+      background: rgba(99,102,241,.15) !important; border-left-color: #6366f1 !important; color: #fff !important;
+    }
+    [data-theme="dark"] .btn-nav-signout { background: rgba(255,255,255,.06) !important; color: rgba(255,255,255,.6) !important; }
+    [data-theme="dark"] .btn-nav-signout:hover { background: rgba(255,255,255,.12) !important; color: #fff !important; }
+    [data-theme="dark"] .page-title { font-weight: 900 !important; color: #f1f5f9; }
+    [data-theme="dark"] .page-sub   { color: #64748b; }
+    [data-theme="dark"] .stat-card {
+      background: rgba(255,255,255,.04) !important;
+      border: 1px solid rgba(255,255,255,.09) !important;
+      border-radius: 14px !important; backdrop-filter: blur(16px);
+      box-shadow: 0 8px 32px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.07) !important;
+      transform: perspective(600px) rotateX(3deg);
+      transition: transform .3s ease, box-shadow .3s ease, border-color .3s !important;
+      position: relative; overflow: hidden;
+    }
+    [data-theme="dark"] .stat-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(99,102,241,.5), transparent);
+    }
+    [data-theme="dark"] .stat-card:hover {
+      transform: perspective(600px) rotateX(0deg) translateY(-6px) !important;
+      box-shadow: 0 8px 32px rgba(0,0,0,.55), 0 0 40px rgba(99,102,241,.2), inset 0 1px 0 rgba(255,255,255,.12) !important;
+      border-color: rgba(99,102,241,.35) !important;
+    }
+    [data-theme="dark"] .stat-value {
+      font-size: 30px !important; font-weight: 900 !important;
+      background: linear-gradient(135deg, #fff, #818cf8);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    [data-theme="dark"] .stat-icon  { filter: drop-shadow(0 2px 6px rgba(99,102,241,.35)); }
+    [data-theme="dark"] .stat-label { color: #94a3b8 !important; }
+    [data-theme="dark"] .stat-sub   { color: #818cf8 !important; font-weight: 600 !important; }
+    [data-theme="dark"] .card {
+      background: rgba(255,255,255,.04) !important;
+      border: 1px solid rgba(255,255,255,.09) !important;
+      border-radius: 14px !important; backdrop-filter: blur(16px);
+      box-shadow: 0 8px 32px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05) !important;
+      transition: box-shadow .3s, border-color .3s;
+    }
+    [data-theme="dark"] .card:hover { border-color: rgba(99,102,241,.3) !important; }
+    [data-theme="dark"] .card-title {
+      color: #f1f5f9 !important; font-weight: 700 !important;
+      padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,.09); margin-bottom: 16px !important;
+    }
+    [data-theme="dark"] .data-table th {
+      background: rgba(255,255,255,.03) !important; border-bottom-color: rgba(255,255,255,.09) !important; color: #64748b !important;
+    }
+    [data-theme="dark"] .data-table td { border-bottom-color: rgba(255,255,255,.06) !important; }
+    [data-theme="dark"] .data-table tr:hover td { background: rgba(99,102,241,.05) !important; }
+    [data-theme="dark"] .table-empty { color: #64748b !important; }
+    [data-theme="dark"] .btn {
+      background: rgba(255,255,255,.06) !important; border-color: rgba(255,255,255,.12) !important; color: #f1f5f9 !important;
+    }
+    [data-theme="dark"] .btn:hover { background: rgba(255,255,255,.1) !important; }
+    [data-theme="dark"] .btn-primary { background: #6366f1 !important; border-color: #6366f1 !important; color: #fff !important; }
+    [data-theme="dark"] .btn-primary:hover { background: #4f46e5 !important; }
+    [data-theme="dark"] .skeleton-line {
+      background: linear-gradient(90deg, rgba(255,255,255,.04) 25%, rgba(255,255,255,.08) 50%, rgba(255,255,255,.04) 75%) !important;
+      background-size: 200% 100% !important; animation: af-shimmer 1.5s infinite !important;
+    }
+    @keyframes af-shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+    [data-theme="dark"] .af-modal__box {
+      background: #0d0d2b !important; border: 1px solid rgba(255,255,255,.1);
+      box-shadow: 0 24px 80px rgba(0,0,0,.7);
+    }
+    [data-theme="dark"] .pipeline-node { background: rgba(255,255,255,.04) !important; }
+    [data-theme="dark"] .pipeline-node.node--active { background: rgba(99,102,241,.12) !important; color: #818cf8 !important; }
+    [data-theme="dark"] #af-loader { background: linear-gradient(90deg, #6366f1, #a78bfa) !important; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
            background: var(--color-bg); color: var(--color-text); display: flex; min-height: 100vh; margin: 0; }
     #app  { display: flex; flex: 1; min-height: 100vh; }

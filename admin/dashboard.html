@@ -187,7 +187,12 @@ document.getElementById('app').innerHTML = `
   ${adminNav('Dashboard')}
   <main class="main" style="position:relative;z-index:1">
     <div class="page-header">
-      <h1 class="page-title">Dashboard</h1>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <h1 class="page-title">Dashboard</h1>
+        <span id="rt-pill" style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;
+              background:rgba(16,185,129,.15);color:#34d399;border:1px solid rgba(16,185,129,.25);
+              transition:background .4s">● LIVE</span>
+      </div>
       <p class="page-sub" id="sub">Loading your pipeline stats…</p>
     </div>
     <div class="page-body">
@@ -317,6 +322,40 @@ if (brainStats) {
     statCard('Manual DM Queue',     brainStats.pending_dm,          'no-email leads', '📲'),
   ].join('');
 }
+
+// ── Real-time: auto-refresh stats when a run changes ─────────
+let _realtimeRefreshTimer;
+function scheduleRefresh() {
+  clearTimeout(_realtimeRefreshTimer);
+  _realtimeRefreshTimer = setTimeout(async () => {
+    const [newHistory, newDrafts] = await Promise.all([
+      getRunHistory(clientId, 8).catch(() => []),
+      getPendingDrafts(clientId).catch(() => [])
+    ]);
+    const tl = newHistory.reduce((s,r) => s + (r.leads_found ?? 0), 0);
+    const tq = newHistory.reduce((s,r) => s + (r.leads_qualified ?? 0), 0);
+    const ac = newHistory.length ? (newHistory.reduce((s,r) => s + (r.contact_rate ?? 0), 0) / newHistory.length).toFixed(1) : 0;
+    const ar = newHistory.length ? (newHistory.reduce((s,r) => s + (r.reply_rate ?? 0), 0) / newHistory.length).toFixed(1) : 0;
+    document.getElementById('statsGrid').innerHTML = [
+      statCard('Total Leads Found', tl,              'all time',     '👥'),
+      statCard('Qualified Leads',   tq,              'score ≥ 6',    '✅'),
+      statCard('Avg Contact Rate',  ac + '%',        'target 55%+',  '📡'),
+      statCard('Avg Reply Rate',    ar + '%',        'all channels', '💬'),
+      statCard('Pending Drafts',    newDrafts.length,'need approval','📬'),
+      statCard('Manual DM Queue',   queue.length,    'no-email leads','📲'),
+    ].join('');
+    // Pulse indicator
+    const pill = document.getElementById('rt-pill');
+    if (pill) { pill.style.background = 'rgba(16,185,129,.2)'; pill.textContent = '● LIVE'; setTimeout(() => { pill.style.background = ''; }, 1200); }
+  }, 800);
+}
+
+import { supabase as _sb } from '/shared/auth.js';
+_sb.channel('rt-dashboard')
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'pipeline_runs',    filter: `client_id=eq.${clientId}` }, scheduleRefresh)
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'email_sequences',  filter: `client_id=eq.${clientId}` }, scheduleRefresh)
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'leads',            filter: `client_id=eq.${clientId}` }, scheduleRefresh)
+  .subscribe();
 
 // Solver errors
 if (runs.length > 0) {
