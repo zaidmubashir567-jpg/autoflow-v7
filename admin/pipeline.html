@@ -169,32 +169,60 @@ document.getElementById('app').innerHTML = `
           </div>
         </div>
 
-        <!-- Live run panel -->
-        <div class="card" id="runPanel">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-            <div class="card-title" style="margin:0">Pipeline Progress</div>
-            <span id="runStatus" class="status-pill">idle</span>
-          </div>
+        <!-- Right column: progress + Claude chat -->
+        <div style="display:flex;flex-direction:column;gap:16px">
 
-          <div id="nodeList" style="margin-bottom:20px">
-            <div style="color:var(--color-text-muted);font-size:14px;padding:20px;text-align:center">
-              Configure settings and click Run Pipeline to start.
+          <!-- Live run panel -->
+          <div class="card" id="runPanel">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+              <div class="card-title" style="margin:0">⚡ Pipeline Progress</div>
+              <span id="runStatus" class="status-pill">idle</span>
+            </div>
+
+            <div id="nodeList" style="margin-bottom:20px">
+              <div style="color:var(--color-text-muted);font-size:14px;padding:20px;text-align:center">
+                Configure settings and click Run Pipeline to start.
+              </div>
+            </div>
+
+            <div id="runStats" style="display:none">
+              <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);gap:12px">
+                <div class="stat-mini"><div id="sLeads">0</div><div>Leads Found</div></div>
+                <div class="stat-mini"><div id="sQualified">0</div><div>Qualified</div></div>
+                <div class="stat-mini"><div id="sEmails">0</div><div>Emails Found</div></div>
+                <div class="stat-mini"><div id="sSent">0</div><div>Sent</div></div>
+              </div>
             </div>
           </div>
 
-          <div id="runStats" style="display:none">
-            <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);gap:12px">
-              <div class="stat-mini"><div id="sLeads">0</div><div>Leads Found</div></div>
-              <div class="stat-mini"><div id="sQualified">0</div><div>Qualified</div></div>
-              <div class="stat-mini"><div id="sEmails">0</div><div>Emails Found</div></div>
-              <div class="stat-mini"><div id="sSent">0</div><div>Sent</div></div>
+          <!-- Claude Super Brain chat panel -->
+          <div class="card" id="chatPanel">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--d-border)">
+              <div style="width:32px;height:32px;border-radius:50%;background:rgba(139,92,246,.2);border:1px solid rgba(139,92,246,.4);display:flex;align-items:center;justify-content:center;font-size:16px">🧠</div>
+              <div>
+                <div style="font-size:13px;font-weight:800;color:#c4b5fd">Claude Super Brain</div>
+                <div style="font-size:11px;color:#475569" id="brainStatus">Waiting to start…</div>
+              </div>
+              <span id="brainPill" style="margin-left:auto;font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,.06);color:#475569">IDLE</span>
+            </div>
+
+            <!-- Messages feed -->
+            <div id="chatFeed" style="height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:4px">
+              <div style="text-align:center;padding:40px 0;color:#334155;font-size:13px">
+                🧠 Super Brain messages will appear here in real time
+              </div>
+            </div>
+
+            <!-- User input -->
+            <div style="margin-top:12px;display:flex;gap:8px;border-top:1px solid var(--d-border);padding-top:12px">
+              <input type="text" id="userMsgInput" placeholder="Message the Super Brain…"
+                style="flex:1;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid var(--d-border);border-radius:8px;color:#f1f5f9;font-size:13px"
+                onkeydown="if(event.key==='Enter') sendUserMessage()">
+              <button class="btn" onclick="sendUserMessage()" style="padding:8px 14px;font-size:13px">Send</button>
             </div>
           </div>
 
-          <div id="runLog" style="margin-top:16px;max-height:200px;overflow-y:auto;font-size:12px;
-               font-family:monospace;background:var(--color-surface);border-radius:6px;padding:12px;
-               display:none"></div>
-        </div>
+        </div><!-- end right column -->
       </div>
     </div>
   </main>`;
@@ -288,8 +316,11 @@ window.startPipeline = async function() {
   document.getElementById('runStatus').textContent = 'running';
   document.getElementById('runStatus').className = 'status-pill status-running';
 
-  // Subscribe to Realtime updates
+  // Subscribe to pipeline run updates
   subscription = subscribeToRun(run.id, onRunUpdate);
+
+  // Subscribe to Claude chat messages for this run
+  subscribeToChat(run.id);
 
   // Trigger Edge Function
   try {
@@ -329,11 +360,16 @@ function onRunUpdate(run) {
     document.getElementById('approvalBanner').style.display = 'block';
     document.getElementById('runBtn').disabled = false;
     document.getElementById('runBtn').textContent = '⚡ Run Pipeline';
-    toast('Ready for first-batch approval', 'warning');
+    const pill   = document.getElementById('brainPill');
+    const bstatus = document.getElementById('brainStatus');
+    if (pill)    { pill.textContent = 'DONE'; pill.style.cssText = 'margin-left:auto;font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(16,185,129,.15);color:#34d399;border:1px solid rgba(16,185,129,.3)'; }
+    if (bstatus) bstatus.textContent = 'Waiting for your approval…';
+    toast('Super Brain done — review leads and approve outreach', 'warning');
   }
 
   if (run.status === 'completed' || run.status === 'completed_empty' || run.status === 'error') {
     subscription?.unsubscribe();
+    chatSub?.unsubscribe();
     document.getElementById('runBtn').disabled = false;
     document.getElementById('runBtn').textContent = '⚡ Run Pipeline';
     const msg = run.status === 'error' ? run.error_message : `Done! ${run.emails_sent ?? 0} emails queued.`;
@@ -342,9 +378,92 @@ function onRunUpdate(run) {
 }
 
 function appendLog(msg) {
-  const log = document.getElementById('runLog');
-  log.innerHTML += `<div>${new Date().toLocaleTimeString()} — ${msg}</div>`;
-  log.scrollTop = log.scrollHeight;
+  // kept for compatibility — no longer shown (chat panel replaces it)
+}
+
+// ── Claude Super Brain chat ──────────────────────────────────────
+import { supabase as _sb } from '/shared/auth.js';
+let chatSub = null;
+
+function subscribeToChat(runId) {
+  const pill   = document.getElementById('brainPill');
+  const status = document.getElementById('brainStatus');
+  if (pill)   { pill.textContent = '● LIVE'; pill.style.cssText += ';background:rgba(139,92,246,.2);color:#c4b5fd;border:1px solid rgba(139,92,246,.3)'; }
+  if (status) status.textContent = 'Running…';
+
+  chatSub = _sb.channel('rt-pipeline-chat-' + runId)
+    .on('postgres_changes', {
+      event: 'INSERT', schema: 'public', table: 'pipeline_chat',
+      filter: `run_id=eq.${runId}`
+    }, payload => {
+      appendChatMsg(payload.new);
+    })
+    .subscribe();
+}
+
+const TYPE_STYLE = {
+  info:    { bg: 'rgba(99,102,241,.1)',   border: 'rgba(99,102,241,.25)',   icon: '💬', color: '#a5b4fc' },
+  success: { bg: 'rgba(16,185,129,.1)',   border: 'rgba(16,185,129,.25)',   icon: '✅', color: '#6ee7b7' },
+  warning: { bg: 'rgba(245,158,11,.1)',   border: 'rgba(245,158,11,.25)',   icon: '⚠️', color: '#fcd34d' },
+  insight: { bg: 'rgba(139,92,246,.12)',  border: 'rgba(139,92,246,.3)',    icon: '💡', color: '#c4b5fd' },
+  error:   { bg: 'rgba(239,68,68,.1)',    border: 'rgba(239,68,68,.25)',    icon: '❌', color: '#fca5a5' },
+  user:    { bg: 'rgba(255,255,255,.05)', border: 'rgba(255,255,255,.1)',   icon: '👤', color: '#94a3b8' }
+};
+
+function appendChatMsg(row) {
+  const feed = document.getElementById('chatFeed');
+  if (!feed) return;
+
+  // Clear placeholder if first message
+  if (feed.querySelector('[data-placeholder]')) feed.innerHTML = '';
+
+  const s    = row.role === 'user' ? TYPE_STYLE.user : (TYPE_STYLE[row.type] ?? TYPE_STYLE.info);
+  const time = new Date(row.created_at ?? Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const div = document.createElement('div');
+  div.style.cssText = `
+    background:${s.bg}; border:1px solid ${s.border}; border-radius:10px; padding:10px 12px;
+    ${row.role === 'user' ? 'margin-left:20px;' : ''}
+  `;
+  div.innerHTML = `
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+      <span style="font-size:14px">${s.icon}</span>
+      <span style="font-size:11px;font-weight:700;color:${s.color}">${row.role === 'user' ? 'You' : 'Super Brain'}</span>
+      <span style="font-size:10px;color:#334155;margin-left:auto">${time}</span>
+    </div>
+    <div style="font-size:13px;color:#cbd5e1;line-height:1.5">${row.message.replace(/\n/g,'<br>')}</div>
+  `;
+  feed.appendChild(div);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+// User sends a message to the Super Brain
+window.sendUserMessage = async function() {
+  const input   = document.getElementById('userMsgInput');
+  const text    = input?.value?.trim();
+  if (!text || !activeRunId) return;
+
+  input.value = '';
+
+  // Save user message to pipeline_chat
+  await _sb.from('pipeline_chat').insert({
+    run_id:    activeRunId,
+    client_id: clientId,
+    role:      'user',
+    message:   text,
+    type:      'info'
+  });
+
+  // Show immediately (Realtime will also echo it, that's ok — deduplicate by checking)
+  appendChatMsg({ role: 'user', message: text, type: 'info', created_at: new Date().toISOString() });
+};
+
+// Restore chat history when page loads (if a run was in progress)
+async function loadChatHistory(runId) {
+  const { data: msgs } = await _sb.from('pipeline_chat')
+    .select('*').eq('run_id', runId).order('created_at');
+  const feed = document.getElementById('chatFeed');
+  if (msgs?.length) { feed.innerHTML = ''; msgs.forEach(appendChatMsg); }
 }
 </script>
 
