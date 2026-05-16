@@ -105,7 +105,8 @@ async function processClient(
     if (row.channel === "email" && email) {
       if (client.gmail_access) {
         sendResult = await sendViaGmail(
-          client.gmail_access as string,
+          sb,
+          client,
           email,
           row.subject as string,
           row.body as string
@@ -157,27 +158,97 @@ async function processClient(
   return { sent, skipped, cap_remaining: remaining - sent };
 }
 
+// ── Gmail token refresh ───────────────────────────────────────
+async function refreshGmailToken(
+  sb: ReturnType<typeof import("../_shared/helpers.ts").getAdminClient>,
+  client: Record<string, unknown>
+): Promise<string | null> {
+  const refreshToken = client.gmail_refresh as string | null;
+  if (!refreshToken) return null;
+
+  // Google OAuth client credentials — these are the Supabase project's OAuth app credentials.
+  // They live as Supabase secrets: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.
+  const clientId     = Deno.env.get("GOOGLE_CLIENT_ID");
+  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  if (!clientId || !clientSecret) {
+    console.warn("[follow-up-engine] GOOGLE_CLIENT_ID/SECRET not set — cannot refresh token");
+    return null;
+  }
+
+  try {
+    const body = new URLSearchParams({
+      grant_type:    "refresh_token",
+      refresh_token: refreshToken,
+      client_id:     clientId,
+      client_secret: clientSecret
+    });
+
+    const res = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString()
+    });
+
+    if (!res.ok) {
+      const e = await res.text();
+      console.error("[follow-up-engine] Token refresh failed:", e.slice(0, 200));
+      return null;
+    }
+
+    const data = await res.json();
+    const newToken = data.access_token as string;
+
+    // Persist refreshed token + timestamp back to DB
+    await sb.from("clients").update({
+      gmail_access:         newToken,
+      gmail_token_saved_at: new Date().toISOString()
+    }).eq("id", client.id as string);
+
+    console.log(`[follow-up-engine] Gmail token refreshed for client ${client.id}`);
+    return newToken;
+  } catch (e) {
+    console.error("[follow-up-engine] Token refresh error:", String(e));
+    return null;
+  }
+}
+
 // ── Gmail sender ─────────────────────────────────────────────────
 async function sendViaGmail(
-  accessToken: string,
+  sb: ReturnType<typeof import("../_shared/helpers.ts").getAdminClient>,
+  client: Record<string, unknown>,
   to: string,
   subject: string,
   body: string
 ): Promise<{ ok: boolean; thread_id?: string; error?: string }> {
-  try {
+  let accessToken = client.gmail_access as string;
+
+  const doSend = async (token: string) => {
     const raw = buildRawEmail(to, subject, body);
-    const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    return fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${accessToken}`,
+        "Authorization": `Bearer ${token}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ raw })
     });
+  };
 
+  try {
+    let res = await doSend(accessToken);
+
+    // 401 — try refreshing the token once
     if (res.status === 401) {
-      return { ok: false, error: "Gmail token expired — reconnect in Credentials" };
+      console.log(`[follow-up-engine] 401 for client ${client.id} — attempting token refresh`);
+      const newToken = await refreshGmailToken(sb, client);
+      if (!newToken) {
+        return { ok: false, error: "Gmail token expired — reconnect in Credentials" };
+      }
+      // Update in-memory client so caller sees new token
+      client.gmail_access = newToken;
+      res = await doSend(newToken);
     }
+
     if (!res.ok) {
       const e = await res.text();
       return { ok: false, error: `Gmail error ${res.status}: ${e.slice(0, 200)}` };
