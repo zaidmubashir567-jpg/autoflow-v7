@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agency Settings — AutoFlow</title>
+  <link rel="preconnect" href="https://ndwvsrtyjnaddrifafqk.supabase.co" crossorigin>
+  <link rel="modulepreload" href="/shared/auth.js">
+  <link rel="modulepreload" href="/shared/ui.js">
+  <link rel="modulepreload" href="/shared/db.js"></head>
+<body><div id="app">Loading…</div>
+<script type="module">
+import { requireAuth, supabase } from '/shared/auth.js';
+import { adminNav, injectSharedCSS, toast } from '/shared/ui.js';
+
+injectSharedCSS();
+await requireAuth('admin');
+
+const { data: { user } } = await supabase.auth.getUser();
+
+// ── Load or scaffold agency record ───────────────────────────
+let { data: agency } = await supabase
+  .from('agencies')
+  .select('*')
+  .eq('owner_user_id', user.id)
+  .maybeSingle();
+
+// ── Render ────────────────────────────────────────────────────
+document.getElementById('app').innerHTML = `
+  ${adminNav('Agency')}
+  <main class="main">
+    <div class="page-header">
+      <h1 class="page-title">White-Label Agency</h1>
+      <p class="page-sub">Brand AutoFlow as your own product. Your clients see your logo, colors, and name — not "AutoFlow".</p>
+    </div>
+    <div class="page-body">
+      <div style="max-width:680px">
+        ${agency ? renderSetup(agency) : renderCreate()}
+      </div>
+    </div>
+  </main>`;
+
+// ── Forms ─────────────────────────────────────────────────────
+function renderCreate() {
+  return `
+    <div class="card" style="padding:28px">
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="font-size:48px;margin-bottom:8px">🏢</div>
+        <h2 style="font-size:20px;font-weight:700;margin:0 0 6px">Set up your Agency</h2>
+        <p style="font-size:13px;color:var(--color-text-muted);margin:0">
+          Give your agency a name and brand. Takes 30 seconds.
+        </p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        ${field('agency-name',    'Agency Name',     'Acme Lead Agency',       'text')}
+        ${field('agency-slug',    'URL Slug',        'acmeleads',              'text', 'Used in login links: autoflow.app/agency/<b>acmeleads</b>')}
+        ${field('agency-email',   'Support Email',   'hello@acmeleadagency.com','email')}
+        ${field('agency-tagline', 'Tagline (optional)', 'We get you more customers', 'text')}
+        <div style="display:flex;gap:14px">
+          ${colorField('agency-primary', 'Brand Color',  '#6366F1')}
+          ${colorField('agency-accent',  'Accent Color', '#818CF8')}
+        </div>
+        <button class="btn-primary" style="margin-top:4px" onclick="createAgency()">
+          Create Agency →
+        </button>
+      </div>
+    </div>`;
+}
+
+function renderSetup(ag) {
+  return `
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <!-- Live preview -->
+      <div class="card" style="padding:20px;border:1px solid ${ag.primary_color}33">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${ag.primary_color};margin-bottom:12px">Live Preview</div>
+        <div style="display:flex;align-items:center;gap:14px">
+          ${ag.logo_url
+            ? `<img src="${ag.logo_url}" width="40" height="40" style="border-radius:8px;object-fit:contain">`
+            : `<div style="width:40px;height:40px;border-radius:8px;background:${ag.primary_color};display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;color:#fff">${(ag.name||'A')[0]}</div>`
+          }
+          <div>
+            <div style="font-size:16px;font-weight:700">${ag.name}</div>
+            ${ag.tagline ? `<div style="font-size:12px;color:var(--color-text-muted)">${ag.tagline}</div>` : ''}
+          </div>
+          <div style="margin-left:auto;display:flex;gap:6px">
+            <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${ag.primary_color}"></span>
+            <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${ag.accent_color||'#818CF8'}"></span>
+          </div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <span class="info-chip">Plan: <b>${ag.plan}</b></span>
+          <span class="info-chip">Max clients: <b>${ag.max_clients}</b></span>
+          <span class="info-chip">Slug: <b>${ag.slug}</b></span>
+          ${ag.support_email ? `<span class="info-chip">${ag.support_email}</span>` : ''}
+        </div>
+      </div>
+
+      <!-- Edit form -->
+      <div class="card" style="padding:24px">
+        <div style="font-size:13px;font-weight:700;margin-bottom:16px">Agency Settings</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          ${editField('edit-name',    'Agency Name',    ag.name    || '', 'text')}
+          ${editField('edit-tagline', 'Tagline',        ag.tagline || '', 'text')}
+          ${editField('edit-email',   'Support Email',  ag.support_email || '', 'email')}
+          ${editField('edit-logo',    'Logo URL',       ag.logo_url || '', 'url', 'Paste a direct image URL (PNG/SVG, square works best)')}
+          <div style="display:flex;gap:14px">
+            ${colorField('edit-primary', 'Brand Color',  ag.primary_color || '#6366F1')}
+            ${colorField('edit-accent',  'Accent Color', ag.accent_color  || '#818CF8')}
+          </div>
+          <button class="btn-primary" onclick="saveAgency('${ag.id}')">Save Changes</button>
+        </div>
+      </div>
+
+      <!-- Agency link -->
+      <div class="card" style="padding:20px">
+        <div style="font-size:13px;font-weight:700;margin-bottom:10px">Client Onboarding Link</div>
+        <div style="font-size:12px;color:var(--color-text-muted);margin-bottom:10px">
+          Send this link to new clients. They'll sign up under your agency automatically.
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <code id="agency-link" style="flex:1;font-size:12px;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#a5b4fc">
+            ${location.origin}/setup.html?agency=${ag.slug}
+          </code>
+          <button class="btn-secondary" onclick="copyLink()">Copy</button>
+        </div>
+      </div>
+
+      <!-- Danger zone -->
+      <div class="card" style="padding:20px;border-color:rgba(239,68,68,.2)">
+        <div style="font-size:13px;font-weight:700;color:#fca5a5;margin-bottom:8px">Danger Zone</div>
+        <div style="font-size:12px;color:var(--color-text-muted);margin-bottom:12px">
+          Deleting your agency removes branding from all linked clients. Clients remain active.
+        </div>
+        <button style="padding:7px 16px;border-radius:8px;background:rgba(239,68,68,.12);color:#fca5a5;border:1px solid rgba(239,68,68,.25);font-size:13px;font-weight:600;cursor:pointer" onclick="deleteAgency('${ag.id}')">
+          Delete Agency
+        </button>
+      </div>
+    </div>`;
+}
+
+// ── Field helpers ─────────────────────────────────────────────
+function field(id, label, placeholder, type='text', hint='') {
+  return `<div>
+    <label style="font-size:11px;font-weight:700;color:var(--color-text-muted);display:block;margin-bottom:4px">${label}</label>
+    <input type="${type}" id="${id}" placeholder="${placeholder}"
+      style="width:100%;padding:9px 12px;border:1px solid var(--color-border);border-radius:8px;font-size:13px;box-sizing:border-box">
+    ${hint ? `<div style="font-size:11px;color:var(--color-text-muted);margin-top:3px">${hint}</div>` : ''}
+  </div>`;
+}
+
+function editField(id, label, value, type='text', hint='') {
+  return `<div>
+    <label style="font-size:11px;font-weight:700;color:var(--color-text-muted);display:block;margin-bottom:4px">${label}</label>
+    <input type="${type}" id="${id}" value="${value.replace(/"/g,'&quot;')}"
+      style="width:100%;padding:9px 12px;border:1px solid var(--color-border);border-radius:8px;font-size:13px;box-sizing:border-box">
+    ${hint ? `<div style="font-size:11px;color:var(--color-text-muted);margin-top:3px">${hint}</div>` : ''}
+  </div>`;
+}
+
+function colorField(id, label, defaultVal) {
+  return `<div style="flex:1">
+    <label style="font-size:11px;font-weight:700;color:var(--color-text-muted);display:block;margin-bottom:4px">${label}</label>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input type="color" id="${id}" value="${defaultVal}"
+        style="width:40px;height:36px;border:1px solid var(--color-border);border-radius:8px;cursor:pointer;background:none;padding:2px">
+      <input type="text" id="${id}-hex" value="${defaultVal}"
+        style="flex:1;padding:8px 10px;border:1px solid var(--color-border);border-radius:8px;font-size:12px;font-family:monospace"
+        oninput="document.getElementById('${id}').value=this.value">
+    </div>
+  </div>`;
+}
+
+// Sync color pickers
+document.addEventListener('input', e => {
+  if (e.target.type === 'color') {
+    const hexEl = document.getElementById(e.target.id + '-hex');
+    if (hexEl) hexEl.value = e.target.value;
+  }
+});
+
+// ── Actions ───────────────────────────────────────────────────
+window.createAgency = async function() {
+  const name    = document.getElementById('agency-name')?.value?.trim();
+  const slug    = document.getElementById('agency-slug')?.value?.trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
+  const email   = document.getElementById('agency-email')?.value?.trim();
+  const tagline = document.getElementById('agency-tagline')?.value?.trim();
+  const primary = document.getElementById('agency-primary')?.value || '#6366F1';
+  const accent  = document.getElementById('agency-accent')?.value  || '#818CF8';
+
+  if (!name || !slug) { toast('Name and slug are required', 'warning'); return; }
+
+  const { data, error } = await supabase.from('agencies').insert({
+    owner_user_id: user.id,
+    name, slug,
+    support_email: email || null,
+    tagline:       tagline || null,
+    primary_color: primary,
+    accent_color:  accent
+  }).select().single();
+
+  if (error) {
+    toast('Error: ' + (error.message.includes('unique') ? 'That slug is already taken' : error.message), 'error');
+    return;
+  }
+
+  toast('Agency created ✓', 'success');
+  agency = data;
+  document.querySelector('.page-body > div').innerHTML = renderSetup(data);
+};
+
+window.saveAgency = async function(agId) {
+  const updates = {
+    name:          document.getElementById('edit-name')?.value?.trim()    || agency.name,
+    tagline:       document.getElementById('edit-tagline')?.value?.trim() || null,
+    support_email: document.getElementById('edit-email')?.value?.trim()   || null,
+    logo_url:      document.getElementById('edit-logo')?.value?.trim()    || null,
+    primary_color: document.getElementById('edit-primary')?.value         || '#6366F1',
+    accent_color:  document.getElementById('edit-accent')?.value          || '#818CF8',
+    updated_at:    new Date().toISOString()
+  };
+
+  const { error } = await supabase.from('agencies').update(updates).eq('id', agId);
+  if (error) { toast('Save failed: ' + error.message, 'error'); return; }
+
+  Object.assign(agency, updates);
+  toast('Saved ✓', 'success');
+  document.querySelector('.page-body > div').innerHTML = renderSetup(agency);
+};
+
+window.deleteAgency = async function(agId) {
+  if (!confirm('Delete your agency? This removes branding from all clients but keeps them active.')) return;
+  await supabase.from('agencies').delete().eq('id', agId);
+  toast('Agency deleted', 'info');
+  agency = null;
+  document.querySelector('.page-body > div').innerHTML = renderCreate();
+};
+
+window.copyLink = function() {
+  const link = document.getElementById('agency-link')?.textContent?.trim();
+  if (link) navigator.clipboard.writeText(link).then(() => toast('Link copied ✓', 'success'));
+};
+</script>
+
+<style>
+  .card {
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.09);
+    border-radius: 14px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.06);
+  }
+  .btn-primary {
+    padding: 10px 20px; border-radius: 9px; font-size: 14px; font-weight: 700;
+    background: var(--color-accent); color: #fff; border: none; cursor: pointer; transition: all .2s;
+  }
+  .btn-primary:hover { opacity: .88; transform: translateY(-1px); }
+  .btn-secondary {
+    padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
+    background: rgba(255,255,255,.07); color: #f1f5f9;
+    border: 1px solid rgba(255,255,255,.12); cursor: pointer; transition: all .2s;
+  }
+  .btn-secondary:hover { background: rgba(255,255,255,.12); }
+  .info-chip {
+    font-size: 11px; padding: 3px 10px; border-radius: 20px;
+    background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1); color: #94a3b8;
+  }
+  input[type="text"], input[type="email"], input[type="url"] {
+    background: rgba(255,255,255,.05) !important;
+    border: 1px solid rgba(255,255,255,.12) !important;
+    color: #f1f5f9 !important;
+    transition: border-color .2s;
+  }
+  input:focus { outline: none; border-color: rgba(99,102,241,.5) !important; box-shadow: 0 0 0 3px rgba(99,102,241,.1); }
+</style>
+</body></html>

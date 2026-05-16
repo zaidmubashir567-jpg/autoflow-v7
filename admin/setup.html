@@ -100,6 +100,31 @@ if (!session) { location.href = '/'; }
 const user = session.user;
 badgeEl.innerHTML = `Logged in as <span>${user.email}</span>`;
 
+// Check for white-label agency invite link (?agency=slug)
+const agencySlug = new URLSearchParams(location.search).get('agency');
+let agencyRecord = null;
+if (agencySlug) {
+  const { data: ag } = await supabase
+    .from('agencies')
+    .select('id, name, logo_url, primary_color, tagline')
+    .eq('slug', agencySlug)
+    .maybeSingle();
+  agencyRecord = ag;
+  if (ag) {
+    // Apply agency branding to setup page
+    document.querySelector('.logo').textContent = ag.name;
+    document.querySelector('.logo').style.background = `linear-gradient(135deg, ${ag.primary_color}, ${ag.primary_color}cc)`;
+    document.querySelector('h1').textContent = `Join ${ag.name}`;
+    document.querySelector('p').textContent  = ag.tagline || `Set up your account with ${ag.name}.`;
+    if (ag.logo_url) {
+      const logoImg = document.createElement('img');
+      logoImg.src = ag.logo_url;
+      logoImg.style.cssText = 'width:48px;height:48px;border-radius:10px;object-fit:contain;margin-bottom:12px';
+      document.querySelector('.card').prepend(logoImg);
+    }
+  }
+}
+
 // Check if an admin already exists
 const { data: existingAdmin } = await supabase
   .from('clients')
@@ -122,12 +147,15 @@ window.createAdmin = async function() {
   btn.innerHTML = '<span class="spinner"></span>Creating…';
   hideStatus();
 
-  const { error } = await supabase.from('clients').insert({
+  const insertPayload = {
     user_id : user.id,
     name    : name,
     email   : user.email,
     plan    : 'agency'
-  });
+  };
+  if (agencyRecord) insertPayload.agency_id = agencyRecord.id;
+
+  const { error } = await supabase.from('clients').insert(insertPayload);
 
   if (error) {
     // RLS may block direct insert — show SQL fallback instructions

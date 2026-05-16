@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agency Clients — AutoFlow</title>
+  <link rel="preconnect" href="https://ndwvsrtyjnaddrifafqk.supabase.co" crossorigin>
+  <link rel="modulepreload" href="/shared/auth.js">
+  <link rel="modulepreload" href="/shared/ui.js"></head>
+<body><div id="app">Loading…</div>
+<script type="module">
+import { requireAuth, supabase } from '/shared/auth.js';
+import { adminNav, injectSharedCSS, toast } from '/shared/ui.js';
+
+injectSharedCSS();
+await requireAuth('admin');
+
+const { data: { user } } = await supabase.auth.getUser();
+
+// Load agency
+const { data: agency } = await supabase
+  .from('agencies')
+  .select('*')
+  .eq('owner_user_id', user.id)
+  .maybeSingle();
+
+// Load clients under this agency
+let clients = [];
+if (agency) {
+  const { data } = await supabase
+    .from('clients')
+    .select('id, business_name, email, plan, active, created_at, brand_name, brand_logo, daily_email_cap')
+    .eq('agency_id', agency.id)
+    .order('created_at', { ascending: false });
+  clients = data || [];
+}
+
+document.getElementById('app').innerHTML = `
+  ${adminNav('Agency')}
+  <main class="main">
+    <div class="page-header">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <h1 class="page-title">${agency ? agency.name + ' — Clients' : 'Agency Clients'}</h1>
+          <p class="page-sub">${agency ? `${clients.length} / ${agency.max_clients} client seats used` : 'Set up your agency first.'}</p>
+        </div>
+        ${agency ? `<button class="btn-primary" onclick="showAddClient()">+ Add Client</button>` : ''}
+      </div>
+    </div>
+    <div class="page-body">
+      ${!agency
+        ? `<div class="empty-state"><p>You haven't set up an agency yet.</p><a href="/admin/agency.html" class="btn-primary">Set Up Agency →</a></div>`
+        : `
+          <!-- Add client form (hidden by default) -->
+          <div id="add-form" style="display:none;max-width:580px;margin-bottom:20px">
+            <div class="card" style="padding:22px">
+              <div style="font-size:14px;font-weight:700;margin-bottom:14px">Add New Client</div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                ${formField('new-biz',   'Business Name', 'Acme Roofing Co.',   'text')}
+                ${formField('new-email', 'Client Email',  'owner@acmeroofing.com','email')}
+                ${formField('new-plan',  'Plan',          '',                    'select', ['starter','growth','enterprise'])}
+                ${formField('new-cap',   'Daily Email Cap','50',                 'number')}
+                <div style="display:flex;gap:8px;margin-top:4px">
+                  <button class="btn-primary" onclick="addClient('${agency.id}')">Create Client</button>
+                  <button class="btn-secondary" onclick="hideAddClient()">Cancel</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Clients table -->
+          <div id="clients-list">
+            ${renderClients(clients, agency)}
+          </div>`
+      }
+    </div>
+  </main>`;
+
+// ── Render helpers ────────────────────────────────────────────
+function renderClients(list, ag) {
+  if (!list.length) return `
+    <div class="empty-state">
+      <div style="font-size:36px;margin-bottom:10px">👥</div>
+      <p style="font-size:14px;color:var(--color-text-muted)">No clients yet. Add your first one above.</p>
+    </div>`;
+
+  return `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${list.map(c => `
+        <div class="client-row" style="border-left:3px solid ${c.active ? '#10B981' : '#475569'}">
+          <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0">
+            ${c.brand_logo
+              ? `<img src="${c.brand_logo}" width="32" height="32" style="border-radius:6px;object-fit:contain;flex-shrink:0">`
+              : `<div style="width:32px;height:32px;border-radius:6px;background:${ag.primary_color};display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;color:#fff;flex-shrink:0">${(c.business_name||'?')[0]}</div>`
+            }
+            <div style="min-width:0">
+              <div style="font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.brand_name || c.business_name || 'Unnamed Client'}</div>
+              <div style="font-size:11px;color:var(--color-text-muted)">${c.email || '—'}</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+            <span class="chip chip--${c.plan||'starter'}">${c.plan||'starter'}</span>
+            <span class="chip" style="background:rgba(255,255,255,.06)">${c.daily_email_cap||50}/day</span>
+            <span class="chip" style="background:${c.active?'rgba(16,185,129,.12)':'rgba(71,85,105,.15)'};color:${c.active?'#34d399':'#64748b'}">${c.active?'Active':'Paused'}</span>
+            <button class="btn-icon" title="Toggle active" onclick="toggleClient('${c.id}', ${!c.active})">
+              ${c.active ? '⏸' : '▶'}
+            </button>
+            <button class="btn-icon" title="Open client dashboard" onclick="openClient('${c.id}')">↗</button>
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+function formField(id, label, placeholder, type, options) {
+  if (type === 'select') {
+    return `<div>
+      <label style="font-size:11px;font-weight:700;color:var(--color-text-muted);display:block;margin-bottom:3px">${label}</label>
+      <select id="${id}" style="width:100%;padding:9px 12px;border:1px solid var(--color-border);border-radius:8px;font-size:13px;background:rgba(255,255,255,.05);color:#f1f5f9">
+        ${options.map(o => `<option value="${o}">${o}</option>`).join('')}
+      </select>
+    </div>`;
+  }
+  return `<div>
+    <label style="font-size:11px;font-weight:700;color:var(--color-text-muted);display:block;margin-bottom:3px">${label}</label>
+    <input type="${type}" id="${id}" placeholder="${placeholder}"
+      style="width:100%;padding:9px 12px;border:1px solid var(--color-border);border-radius:8px;font-size:13px;box-sizing:border-box">
+  </div>`;
+}
+
+// ── Actions ───────────────────────────────────────────────────
+window.showAddClient = () => { document.getElementById('add-form').style.display = 'block'; };
+window.hideAddClient = () => { document.getElementById('add-form').style.display = 'none'; };
+
+window.addClient = async function(agencyId) {
+  const bizName = document.getElementById('new-biz')?.value?.trim();
+  const email   = document.getElementById('new-email')?.value?.trim();
+  const plan    = document.getElementById('new-plan')?.value || 'starter';
+  const cap     = parseInt(document.getElementById('new-cap')?.value) || 50;
+
+  if (!bizName) { toast('Business name is required', 'warning'); return; }
+
+  const { data, error } = await supabase.from('clients').insert({
+    business_name:   bizName,
+    email:           email || null,
+    plan,
+    daily_email_cap: cap,
+    agency_id:       agencyId,
+    active:          true
+  }).select().single();
+
+  if (error) { toast('Error: ' + error.message, 'error'); return; }
+
+  clients.unshift(data);
+  toast(`${bizName} added ✓`, 'success');
+  document.getElementById('clients-list').innerHTML = renderClients(clients, agency);
+  hideAddClient();
+};
+
+window.toggleClient = async function(clientId, newActive) {
+  await supabase.from('clients').update({ active: newActive }).eq('id', clientId);
+  const c = clients.find(x => x.id === clientId);
+  if (c) c.active = newActive;
+  document.getElementById('clients-list').innerHTML = renderClients(clients, agency);
+  toast(newActive ? 'Client activated' : 'Client paused', 'info');
+};
+
+window.openClient = function(clientId) {
+  window.open(`/admin/dashboard.html?client=${clientId}`, '_blank');
+};
+</script>
+
+<style>
+  .card {
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.09);
+    border-radius: 14px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.06);
+  }
+  .client-row {
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.07);
+    border-radius: 12px; padding: 14px 16px;
+    display: flex; align-items: center; gap: 16px;
+    transition: all .2s;
+  }
+  .client-row:hover { background: rgba(255,255,255,.055); border-color: rgba(255,255,255,.12); }
+  .btn-primary {
+    padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 700;
+    background: var(--color-accent); color: #fff; border: none; cursor: pointer; transition: all .2s;
+  }
+  .btn-primary:hover { opacity: .88; }
+  .btn-secondary {
+    padding: 9px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+    background: rgba(255,255,255,.07); color: #f1f5f9;
+    border: 1px solid rgba(255,255,255,.12); cursor: pointer;
+  }
+  .btn-icon {
+    width: 28px; height: 28px; border-radius: 6px; font-size: 13px;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+    color: #94a3b8; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all .2s;
+  }
+  .btn-icon:hover { background: rgba(99,102,241,.15); color: #a5b4fc; border-color: rgba(99,102,241,.3); }
+  .chip {
+    font-size: 11px; padding: 3px 9px; border-radius: 20px;
+    border: 1px solid rgba(255,255,255,.08); white-space: nowrap;
+  }
+  .chip--growth     { background: rgba(99,102,241,.15); color: #a5b4fc; border-color: rgba(99,102,241,.25); }
+  .chip--enterprise { background: rgba(245,158,11,.12); color: #fbbf24; border-color: rgba(245,158,11,.25); }
+  .chip--starter    { background: rgba(255,255,255,.06); color: #94a3b8; }
+  .empty-state {
+    text-align: center; padding: 60px 20px;
+    color: var(--color-text-muted); font-size: 14px;
+  }
+  input, select {
+    background: rgba(255,255,255,.05) !important;
+    border: 1px solid rgba(255,255,255,.12) !important;
+    color: #f1f5f9 !important;
+  }
+  input:focus, select:focus { outline: none; border-color: rgba(99,102,241,.5) !important; }
+</style>
+</body></html>

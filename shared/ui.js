@@ -18,6 +18,8 @@ export function adminNav(activePage = '') {
     { href: '/admin/analytics.html',        icon: '📈', label: 'Analytics' },
     { href: '/admin/settings.html',         icon: '⚙️', label: 'Settings' },
     { href: '/admin/credentials.html',      icon: '🔑', label: 'Credentials' },
+    { href: '/admin/agency.html',           icon: '🏢', label: 'Agency' },
+    { href: '/admin/agency-clients.html',   icon: '👥', label: 'Agency Clients' },
   ];
 
   const items = links.map(l => {
