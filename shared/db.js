@@ -1,5 +1,5 @@
 // ============================================================
-// AutoFlow v7 — shared/db.js
+// LeadFyn — shared/db.js
 // All Supabase database queries in one place.
 // Every Edge Function and page goes through here — no raw queries outside this file.
 // ============================================================

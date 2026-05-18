@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Pipeline — AutoFlow</title>
+  <title>Pipeline — LeadFyn</title>
   <link rel="preconnect" href="https://ndwvsrtyjnaddrifafqk.supabase.co" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="modulepreload" href="/shared/auth.js">
@@ -70,6 +70,8 @@
 <div id="app">Loading…</div>
 
 <script type="module">
+  import { injectLeadFynTheme } from '/shared/ui.js';
+  injectLeadFynTheme();
 import { requireAuth, getClientId, getSession } from '/shared/auth.js';
 import { adminNav, injectSharedCSS, toast, nodeProgress, modal, closeModal } from '/shared/ui.js';
 import { getClient, createRun, updateRun, subscribeToRun, getTodaySendCount } from '/shared/db.js';
@@ -97,7 +99,7 @@ document.getElementById('app').innerHTML = `
   <main class="main">
     <div class="page-header">
       <h1 class="page-title">Run Pipeline</h1>
-      <p class="page-sub">AutoFlow finds businesses, enriches contacts across 10 channels, and sends outreach — you approve the sends.</p>
+      <p class="page-sub">LeadFyn finds businesses, enriches contacts across 10 channels, and sends outreach — you approve the sends.</p>
     </div>
     <div class="page-body">
       <div style="display:grid;grid-template-columns:380px 1fr;gap:24px;align-items:start">

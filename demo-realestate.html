@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Premier Properties — Find Your Perfect Home</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+:root{--green:#1a6b3a;--light-green:#e8f5e8;--text:#1d1d1f;--text2:#6e6e73;--bg:#f9f9f9;}
+body{font-family:'Inter',sans-serif;background:#fff;color:var(--text);overflow-x:hidden;}
+.demo-banner{background:var(--green);color:#fff;text-align:center;padding:.6rem;font-size:.82rem;position:sticky;top:0;z-index:9999;}
+.demo-banner a{color:#a8e6b0;text-decoration:none;font-weight:600;}
+/* NAV */
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 5%;height:70px;background:#fff;box-shadow:0 1px 0 rgba(0,0,0,.08);}
+.logo{font-size:1.2rem;font-weight:800;color:var(--text);}
+.logo span{color:var(--green);}
+.nav-links{display:flex;gap:2rem;list-style:none;}
+.nav-links a{text-decoration:none;color:var(--text2);font-weight:500;font-size:.9rem;}
+.nav-val{background:var(--green);color:#fff;border:none;padding:.6rem 1.4rem;border-radius:6px;font-weight:700;cursor:pointer;font-size:.9rem;}
+/* HERO */
+.hero{background:linear-gradient(135deg,#0d3d20,#1a6b3a);color:#fff;padding:100px 5% 80px;position:relative;overflow:hidden;}
+.hero-inner{max-width:700px;}
+.hero-tag{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:4px;padding:.35rem .9rem;font-size:.78rem;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.85);margin-bottom:1.5rem;}
+.hero h1{font-size:clamp(2.5rem,5vw,4rem);font-weight:900;letter-spacing:-2px;line-height:1.05;margin-bottom:1.2rem;}
+.hero h1 span{color:#a8e6b0;}
+.hero p{font-size:1.05rem;color:rgba(255,255,255,.7);line-height:1.7;margin-bottom:2.5rem;max-width:520px;}
+/* SEARCH BAR */
+.search-bar{background:#fff;border-radius:12px;padding:1rem 1.2rem;display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;max-width:680px;}
+.search-bar select,.search-bar input{border:none;outline:none;font-family:'Inter',sans-serif;font-size:.9rem;color:var(--text);background:transparent;flex:1;min-width:120px;}
+.search-bar .divider{width:1px;height:24px;background:rgba(0,0,0,.1);flex-shrink:0;}
+.search-btn{background:var(--green);color:#fff;border:none;padding:.75rem 1.5rem;border-radius:8px;font-weight:700;cursor:pointer;white-space:nowrap;}
+/* STATS STRIP */
+.stats-strip{background:#fff;padding:2.5rem 5%;display:flex;justify-content:center;gap:4rem;flex-wrap:wrap;border-bottom:1px solid rgba(0,0,0,.07);}
+.s-item{text-align:center;}
+.s-val{font-size:1.8rem;font-weight:900;letter-spacing:-1px;color:var(--green);}
+.s-lbl{font-size:.82rem;color:var(--text2);margin-top:.2rem;}
+/* LISTINGS */
+.listings{padding:80px 5%;background:var(--bg);}
+.sec-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2.5rem;}
+.sec-header h2{font-size:2rem;font-weight:800;letter-spacing:-1px;}
+.see-all{color:var(--green);font-weight:600;cursor:pointer;font-size:.9rem;text-decoration:none;}
+.prop-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1.8rem;}
+.prop{background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 16px rgba(0,0,0,.07);transition:transform .25s,box-shadow .25s;}
+.prop:hover{transform:translateY(-4px);box-shadow:0 8px 32px rgba(0,0,0,.12);}
+.prop-img{height:200px;display:flex;align-items:center;justify-content:center;font-size:5rem;position:relative;}
+.prop-img.type1{background:linear-gradient(135deg,#d4f0d4,#a8d8a8);}
+.prop-img.type2{background:linear-gradient(135deg,#d0e8f0,#a0c8d8);}
+.prop-img.type3{background:linear-gradient(135deg,#f0e8d0,#d8c898);}
+.prop-tag{position:absolute;top:12px;left:12px;background:var(--green);color:#fff;border-radius:4px;padding:.25rem .7rem;font-size:.75rem;font-weight:700;}
+.prop-fave{position:absolute;top:12px;right:12px;background:#fff;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15);}
+.prop-body{padding:1.4rem;}
+.prop-price{font-size:1.5rem;font-weight:900;letter-spacing:-0.5px;color:var(--text);}
+.prop-addr{color:var(--text2);font-size:.85rem;margin:.3rem 0 .8rem;}
+.prop-specs{display:flex;gap:1.2rem;color:var(--text2);font-size:.82rem;font-weight:500;}
+.prop-specs span{display:flex;align-items:center;gap:.3rem;}
+/* VALUATION */
+.valuation{background:var(--green);color:#fff;padding:80px 5%;display:grid;grid-template-columns:1fr 1fr;gap:4rem;align-items:center;}
+.valuation h2{font-size:2.5rem;font-weight:800;letter-spacing:-1px;margin-bottom:1rem;}
+.valuation p{color:rgba(255,255,255,.7);line-height:1.7;}
+.val-form{display:flex;flex-direction:column;gap:1rem;}
+.val-form input,.val-form select{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:.9rem 1rem;color:#fff;font-size:.9rem;font-family:'Inter',sans-serif;outline:none;}
+.val-form input::placeholder{color:rgba(255,255,255,.5);}
+.val-form select option{background:var(--green);}
+.val-btn{background:#fff;color:var(--green);border:none;padding:.95rem;border-radius:8px;font-weight:800;cursor:pointer;font-size:.95rem;}
+/* AGENTS */
+.agents{padding:80px 5%;background:#fff;}
+.agents h2{font-size:2rem;font-weight:800;letter-spacing:-1px;text-align:center;margin-bottom:3rem;}
+.agent-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1.5rem;max-width:800px;margin:0 auto;}
+.agent{text-align:center;padding:2rem 1rem;background:var(--bg);border-radius:16px;}
+.agent-avatar{width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#a8d8a8,#1a6b3a);display:flex;align-items:center;justify-content:center;font-size:2rem;margin:0 auto 1rem;}
+.agent-name{font-weight:700;margin-bottom:.2rem;}
+.agent-role{color:var(--text2);font-size:.85rem;margin-bottom:.6rem;}
+.agent-rating{color:#fbbf24;font-size:.85rem;}
+/* FOOTER */
+footer{background:#111;color:rgba(255,255,255,.4);padding:2.5rem 5%;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;}
+footer .logo-f{color:#fff;font-weight:800;font-size:1.1rem;}
+footer .logo-f span{color:#a8e6b0;}
+@media(max-width:700px){nav .nav-links{display:none;}.valuation,.search-bar{grid-template-columns:1fr;flex-direction:column;}.stats-strip{gap:1.5rem;}}
+</style>
+</head>
+<body>
+<div class="demo-banner">📌 This is a demo site built by <a href="/">LeadFyn</a> — AI-powered lead generation for local businesses.</div>
+<nav>
+  <div class="logo">Premier <span>Properties</span></div>
+  <ul class="nav-links">
+    <li><a href="#">Buy</a></li>
+    <li><a href="#">Sell</a></li>
+    <li><a href="#">Rent</a></li>
+    <li><a href="#">Agents</a></li>
+    <li><a href="#">Valuations</a></li>
+  </ul>
+  <button class="nav-val">Free Valuation</button>
+</nav>
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-tag">🏠 Premier Properties</div>
+    <h1>Find Your <span>Perfect</span><br>Place to Call Home</h1>
+    <p>Over 1,200 properties across London and the South East. Whether you're buying your first home or your forever home, we'll find it for you.</p>
+    <div class="search-bar">
+      <select><option>Buy</option><option>Rent</option><option>Sell</option></select>
+      <div class="divider"></div>
+      <input type="text" placeholder="City, postcode or area...">
+      <div class="divider"></div>
+      <select><option disabled selected>Bedrooms</option><option>Studio</option><option>1 bed</option><option>2 beds</option><option>3 beds</option><option>4+ beds</option></select>
+      <button class="search-btn">Search →</button>
+    </div>
+  </div>
+</section>
+<div class="stats-strip">
+  <div class="s-item"><div class="s-val">1,247</div><div class="s-lbl">Properties Available</div></div>
+  <div class="s-item"><div class="s-val">340+</div><div class="s-lbl">Sales This Year</div></div>
+  <div class="s-item"><div class="s-val">4.9 ⭐</div><div class="s-lbl">Average Rating</div></div>
+  <div class="s-item"><div class="s-val">22 Yrs</div><div class="s-lbl">In Business</div></div>
+</div>
+<section class="listings">
+  <div class="sec-header">
+    <h2>Featured Properties</h2>
+    <a href="#" class="see-all">View all listings →</a>
+  </div>
+  <div class="prop-grid">
+    <div class="prop">
+      <div class="prop-img type1">🏡<div class="prop-tag">For Sale</div><div class="prop-fave">♡</div></div>
+      <div class="prop-body"><div class="prop-price">£485,000</div><div class="prop-addr">📍 Wimbledon, London SW19</div><div class="prop-specs"><span>🛏 4 Beds</span><span>🚿 2 Baths</span><span>📐 1,450 sqft</span></div></div>
+    </div>
+    <div class="prop">
+      <div class="prop-img type2">🏢<div class="prop-tag">For Sale</div><div class="prop-fave">♡</div></div>
+      <div class="prop-body"><div class="prop-price">£320,000</div><div class="prop-addr">📍 Clapham, London SW4</div><div class="prop-specs"><span>🛏 2 Beds</span><span>🚿 1 Bath</span><span>📐 850 sqft</span></div></div>
+    </div>
+    <div class="prop">
+      <div class="prop-img type3">🏠<div class="prop-tag">For Sale</div><div class="prop-fave">♡</div></div>
+      <div class="prop-body"><div class="prop-price">£675,000</div><div class="prop-addr">📍 Richmond, Surrey TW10</div><div class="prop-specs"><span>🛏 5 Beds</span><span>🚿 3 Baths</span><span>📐 2,100 sqft</span></div></div>
+    </div>
+  </div>
+</section>
+<section class="valuation">
+  <div>
+    <h2>How Much Is Your Home Worth?</h2>
+    <p>Get a free, no-obligation valuation from one of our expert local agents. We'll give you an accurate market price and advise on the best time to sell.</p>
+  </div>
+  <form class="val-form" onsubmit="e=>e.preventDefault()">
+    <input type="text" placeholder="Property Address or Postcode">
+    <select><option disabled selected>Property Type</option><option>Flat / Apartment</option><option>Terraced House</option><option>Semi-detached</option><option>Detached House</option></select>
+    <input type="text" placeholder="Your Name">
+    <input type="email" placeholder="Email Address">
+    <button type="submit" class="val-btn">Get My Free Valuation →</button>
+  </form>
+</section>
+<section class="agents">
+  <h2>Meet Our Agents</h2>
+  <div class="agent-grid">
+    <div class="agent"><div class="agent-avatar">👩</div><div class="agent-name">Sarah Collins</div><div class="agent-role">Senior Sales Agent</div><div class="agent-rating">★★★★★ 4.9</div></div>
+    <div class="agent"><div class="agent-avatar">👨</div><div class="agent-name">James Patel</div><div class="agent-role">Lettings Specialist</div><div class="agent-rating">★★★★★ 4.8</div></div>
+    <div class="agent"><div class="agent-avatar">👩</div><div class="agent-name">Emma Johnson</div><div class="agent-role">New Homes Expert</div><div class="agent-rating">★★★★★ 5.0</div></div>
+    <div class="agent"><div class="agent-avatar">👨</div><div class="agent-name">Raj Sharma</div><div class="agent-role">Commercial Property</div><div class="agent-rating">★★★★★ 4.9</div></div>
+  </div>
+</section>
+<footer>
+  <div class="logo-f">Premier <span>Properties</span></div>
+  <p>© 2025 Premier Properties Ltd. Website by <a href="/" style="color:#a8e6b0;">LeadFyn</a>.</p>
+</footer>
+</body>
+</html>

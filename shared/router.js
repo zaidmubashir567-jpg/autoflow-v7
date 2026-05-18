@@ -1,5 +1,5 @@
 // ============================================================
-// AutoFlow v7 — shared/router.js
+// LeadFyn — shared/router.js
 // Role-based routing: admin → /admin/, client → /client/
 // Used by index.html after login and auth-callback.html
 // ============================================================

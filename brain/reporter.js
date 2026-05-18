@@ -1,5 +1,5 @@
 // ============================================================
-// AutoFlow v7 — Brain: Reporter
+// LeadFyn — Brain: Reporter
 // Generates run summaries, weekly digests, and Theo-style P1-P5 insights
 // Used by dashboard.html and analytics.html
 // ============================================================

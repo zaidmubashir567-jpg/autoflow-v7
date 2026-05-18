@@ -1,5 +1,5 @@
 // ============================================================
-// AutoFlow v7 — Brain: Learner
+// LeadFyn — Brain: Learner
 // Reads performance data, surfaces insights for the UI
 // Called from analytics.html and triggered post-learn Edge Function
 // ============================================================

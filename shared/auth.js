@@ -1,5 +1,5 @@
 // ============================================================
-// AutoFlow v7 — shared/auth.js
+// LeadFyn — shared/auth.js
 // Google OAuth + Supabase Auth + role detection
 // Import on every page: <script type="module" src="/shared/auth.js"></script>
 // ============================================================

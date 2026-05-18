@@ -1,12 +1,14 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agency Settings — AutoFlow</title>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agency Settings — LeadFyn</title>
   <link rel="preconnect" href="https://ndwvsrtyjnaddrifafqk.supabase.co" crossorigin>
   <link rel="modulepreload" href="/shared/auth.js">
   <link rel="modulepreload" href="/shared/ui.js">
   <link rel="modulepreload" href="/shared/db.js"></head>
 <body><div id="app">Loading…</div>
 <script type="module">
+  import { injectLeadFynTheme } from '/shared/ui.js';
+  injectLeadFynTheme();
 import { requireAuth, supabase } from '/shared/auth.js';
 import { adminNav, injectSharedCSS, toast } from '/shared/ui.js';
 
@@ -28,7 +30,7 @@ document.getElementById('app').innerHTML = `
   <main class="main">
     <div class="page-header">
       <h1 class="page-title">White-Label Agency</h1>
-      <p class="page-sub">Brand AutoFlow as your own product. Your clients see your logo, colors, and name — not "AutoFlow".</p>
+      <p class="page-sub">Brand LeadFyn as your own product. Your clients see your logo, colors, and name — not "LeadFyn".</p>
     </div>
     <div class="page-body">
       <div style="max-width:680px">

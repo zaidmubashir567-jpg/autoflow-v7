@@ -1,5 +1,5 @@
 // ============================================================
-// AutoFlow v7 — Brain: Solver (Raj layer, client-side)
+// LeadFyn — Brain: Solver (Raj layer, client-side)
 // Wraps known error handling, retry logic, and fix suggestions
 // Mirrors the rajDiagnose() helper in Edge Functions
 // Used by pipeline.html and dashboard.html to surface fix hints

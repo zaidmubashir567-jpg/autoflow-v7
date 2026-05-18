@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ember & Oak — Contemporary Dining</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+:root{--gold:#c9a24c;--dark:#1a0f00;--warm:#2d1a00;--cream:#faf6f0;--text2:#8b7355;}
+body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--dark);overflow-x:hidden;}
+.demo-banner{background:#1a0f00;color:#fff;text-align:center;padding:.6rem;font-size:.82rem;position:sticky;top:0;z-index:9999;}
+.demo-banner a{color:var(--gold);text-decoration:none;font-weight:600;}
+/* NAV */
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 6%;height:80px;background:rgba(26,15,0,.95);backdrop-filter:blur(12px);}
+.logo{font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:700;color:#fff;}
+.logo span{color:var(--gold);}
+.nav-links{display:flex;gap:2.5rem;list-style:none;}
+.nav-links a{text-decoration:none;color:rgba(255,255,255,.7);font-size:.9rem;letter-spacing:.3px;}
+.nav-links a:hover{color:var(--gold);}
+.nav-res{background:var(--gold);color:var(--dark);border:none;padding:.6rem 1.5rem;border-radius:4px;font-weight:700;cursor:pointer;font-size:.9rem;letter-spacing:.5px;}
+/* HERO */
+.hero{height:92vh;background:linear-gradient(to bottom,rgba(26,15,0,.5) 0%,rgba(26,15,0,.7) 100%),linear-gradient(135deg,#3d2200,#1a0f00);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative;overflow:hidden;}
+.hero-bg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:20rem;opacity:.06;}
+.hero-content{position:relative;z-index:1;}
+.hero-tag{color:var(--gold);font-size:.8rem;letter-spacing:3px;text-transform:uppercase;margin-bottom:1.5rem;}
+.hero h1{font-family:'Playfair Display',serif;font-size:clamp(3rem,7vw,6rem);color:#fff;font-weight:800;letter-spacing:-1px;line-height:1.05;margin-bottom:1.2rem;}
+.hero p{color:rgba(255,255,255,.7);font-size:1.1rem;margin-bottom:2.5rem;max-width:500px;}
+.hero-btns{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;}
+.btn-g{background:var(--gold);color:var(--dark);border:none;padding:.9rem 2rem;font-weight:700;cursor:pointer;font-size:.95rem;letter-spacing:.5px;}
+.btn-w{background:transparent;color:#fff;border:2px solid rgba(255,255,255,.4);padding:.9rem 2rem;font-weight:600;cursor:pointer;font-size:.95rem;letter-spacing:.5px;}
+/* ABOUT */
+.about{display:grid;grid-template-columns:1fr 1fr;gap:5rem;align-items:center;padding:100px 6%;}
+.about-img{background:linear-gradient(135deg,#3d2200,#c9a24c33);border-radius:4px;height:480px;display:flex;align-items:center;justify-content:center;font-size:8rem;}
+.about-tag{color:var(--gold);font-size:.78rem;letter-spacing:3px;text-transform:uppercase;margin-bottom:1rem;}
+.about h2{font-family:'Playfair Display',serif;font-size:2.5rem;font-weight:800;line-height:1.2;margin-bottom:1.2rem;}
+.about p{color:var(--text2);line-height:1.8;margin-bottom:1.5rem;}
+/* MENU */
+.menu-section{background:var(--dark);color:#fff;padding:100px 6%;}
+.menu-section .tag{color:var(--gold);font-size:.78rem;letter-spacing:3px;text-transform:uppercase;text-align:center;margin-bottom:1rem;}
+.menu-section h2{font-family:'Playfair Display',serif;font-size:2.8rem;text-align:center;margin-bottom:3.5rem;}
+.menu-tabs{display:flex;justify-content:center;gap:0;margin-bottom:3rem;border:1px solid rgba(255,255,255,.15);border-radius:4px;overflow:hidden;max-width:400px;margin:0 auto 3rem;}
+.tab{flex:1;padding:.75rem;text-align:center;cursor:pointer;color:rgba(255,255,255,.5);font-size:.88rem;font-weight:600;letter-spacing:.5px;transition:all .2s;}
+.tab.active{background:var(--gold);color:var(--dark);}
+.menu-grid{display:grid;grid-template-columns:1fr 1fr;gap:2rem;max-width:800px;margin:0 auto;}
+.menu-item{border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:1.5rem;display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;}
+.menu-name{font-weight:700;margin-bottom:.3rem;font-size:.95rem;}
+.menu-desc{color:rgba(255,255,255,.5);font-size:.83rem;line-height:1.5;}
+.menu-price{color:var(--gold);font-weight:800;font-size:1rem;white-space:nowrap;}
+/* RESERVATION */
+.reservation{padding:100px 6%;display:grid;grid-template-columns:1fr 1fr;gap:5rem;align-items:start;}
+.res-tag{color:var(--gold);font-size:.78rem;letter-spacing:3px;text-transform:uppercase;margin-bottom:1rem;}
+.reservation h2{font-family:'Playfair Display',serif;font-size:2.5rem;line-height:1.2;margin-bottom:1rem;}
+.reservation p{color:var(--text2);line-height:1.8;}
+.res-form{display:flex;flex-direction:column;gap:1rem;}
+.form-row-2{display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
+.res-form input,.res-form select{background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:4px;padding:.9rem 1rem;color:var(--dark);font-size:.9rem;font-family:'Inter',sans-serif;outline:none;}
+.res-form input:focus,.res-form select:focus{border-color:var(--gold);}
+.res-btn{background:var(--dark);color:#fff;border:none;padding:1rem;font-weight:700;cursor:pointer;font-size:.95rem;letter-spacing:.5px;}
+/* HOURS */
+.hours{background:var(--warm);color:#fff;display:flex;justify-content:center;gap:5rem;padding:3rem 6%;flex-wrap:wrap;}
+.h-item{text-align:center;}
+.h-day{color:var(--gold);font-size:.78rem;letter-spacing:2px;text-transform:uppercase;margin-bottom:.3rem;}
+.h-time{font-size:1.1rem;font-weight:600;}
+/* FOOTER */
+footer{background:var(--dark);color:rgba(255,255,255,.4);padding:2.5rem 6%;text-align:center;}
+footer .logo{color:#fff;margin-bottom:.8rem;display:block;font-family:'Playfair Display',serif;font-size:1.3rem;}
+@media(max-width:768px){nav .nav-links{display:none;}.about,.reservation{grid-template-columns:1fr;gap:2rem;}.menu-grid{grid-template-columns:1fr;}.hours{gap:2rem;}}
+</style>
+</head>
+<body>
+<div class="demo-banner">📌 This is a demo site built by <a href="/">LeadFyn</a> — AI-powered lead generation for local businesses.</div>
+<nav>
+  <div class="logo">Ember <span>&</span> Oak</div>
+  <ul class="nav-links">
+    <li><a href="#">Menu</a></li>
+    <li><a href="#">Events</a></li>
+    <li><a href="#">About</a></li>
+    <li><a href="#">Find Us</a></li>
+  </ul>
+  <button class="nav-res">Reserve a Table</button>
+</nav>
+<section class="hero">
+  <div class="hero-bg">🔥</div>
+  <div class="hero-content">
+    <div class="hero-tag">Contemporary Dining · Est. 2019</div>
+    <h1>Where Every Meal<br>Tells a Story</h1>
+    <p>Seasonal ingredients. Wood-fired cooking. An atmosphere that makes every occasion unforgettable.</p>
+    <div class="hero-btns">
+      <button class="btn-g">Reserve Your Table</button>
+      <button class="btn-w">View Our Menu</button>
+    </div>
+  </div>
+</section>
+<section class="about">
+  <div class="about-img">🍽️</div>
+  <div>
+    <div class="about-tag">Our Story</div>
+    <h2>Cooking with Passion, Serving with Heart</h2>
+    <p>Ember & Oak was born from a simple belief: that great food should be honest, seasonal, and full of character. Our chefs source ingredients from local farmers every morning and craft each dish fresh.</p>
+    <p>From intimate dinners to large celebrations, we create the setting that lets your moments shine. Every detail — from the wine list to the candlelight — is chosen with care.</p>
+  </div>
+</section>
+<section class="menu-section">
+  <div class="tag">Our Menu</div>
+  <h2>Seasonal Favourites</h2>
+  <div class="menu-tabs">
+    <div class="tab active">Starters</div>
+    <div class="tab">Mains</div>
+    <div class="tab">Desserts</div>
+  </div>
+  <div class="menu-grid">
+    <div class="menu-item"><div><div class="menu-name">Burrata & Heritage Tomato</div><div class="menu-desc">Basil oil, sea salt, toasted ciabatta</div></div><div class="menu-price">£12</div></div>
+    <div class="menu-item"><div><div class="menu-name">Seared Scallops</div><div class="menu-desc">Cauliflower purée, crispy capers, lemon butter</div></div><div class="menu-price">£16</div></div>
+    <div class="menu-item"><div><div class="menu-name">Duck Liver Parfait</div><div class="menu-desc">Toasted brioche, red onion marmalade</div></div><div class="menu-price">£13</div></div>
+    <div class="menu-item"><div><div class="menu-name">Soup of the Day</div><div class="menu-desc">Seasonal vegetables, fresh herb bread</div></div><div class="menu-price">£8</div></div>
+  </div>
+</section>
+<section class="reservation">
+  <div>
+    <div class="res-tag">Reservations</div>
+    <h2>Join Us for an Unforgettable Evening</h2>
+    <p style="margin-bottom:1.5rem;">Book your table online or call us directly. We recommend booking at least 48 hours ahead, especially for weekends and special events.</p>
+    <p style="color:var(--text2);font-size:.9rem;">📞 020 7123 4567 &nbsp;·&nbsp; 📧 bookings@emberandoak.co.uk</p>
+  </div>
+  <form class="res-form" onsubmit="e=>e.preventDefault()">
+    <div class="form-row-2">
+      <input type="text" placeholder="First Name">
+      <input type="text" placeholder="Last Name">
+    </div>
+    <input type="email" placeholder="Email Address">
+    <input type="tel" placeholder="Phone Number">
+    <div class="form-row-2">
+      <input type="date">
+      <select><option disabled selected>Guests</option><option>2 guests</option><option>3 guests</option><option>4 guests</option><option>5-6 guests</option><option>7+ guests</option></select>
+    </div>
+    <select><option disabled selected>Preferred Time</option><option>12:00 – Lunch</option><option>13:00 – Lunch</option><option>18:30 – Dinner</option><option>19:00 – Dinner</option><option>19:30 – Dinner</option><option>20:00 – Dinner</option></select>
+    <button type="submit" class="res-btn">CONFIRM RESERVATION →</button>
+  </form>
+</section>
+<div class="hours">
+  <div class="h-item"><div class="h-day">Mon – Tue</div><div class="h-time">Closed</div></div>
+  <div class="h-item"><div class="h-day">Wed – Thu</div><div class="h-time">12:00 – 22:00</div></div>
+  <div class="h-item"><div class="h-day">Friday</div><div class="h-time">12:00 – 23:00</div></div>
+  <div class="h-item"><div class="h-day">Saturday</div><div class="h-time">11:00 – 23:00</div></div>
+  <div class="h-item"><div class="h-day">Sunday</div><div class="h-time">11:00 – 21:00</div></div>
+</div>
+<footer>
+  <span class="logo">Ember & Oak</span>
+  <p>© 2025 Ember & Oak Restaurant. Website by <a href="/" style="color:var(--gold);">LeadFyn</a>.</p>
+</footer>
+<script>
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));t.classList.add('active');}));
+</script>
+</body>
+</html>

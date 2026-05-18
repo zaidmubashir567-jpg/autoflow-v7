@@ -1,7 +1,66 @@
 // ============================================================
-// AutoFlow v7 — shared/ui.js
+// LeadFyn — shared/ui.js
 // Shared UI components used across all 17 pages
 // ============================================================
+
+
+// ─── LEADFYN WHITE THEME INJECTOR ────────────────────────────
+// Called once on DOMContentLoaded by every admin page
+export function injectLeadFynTheme() {
+  if (document.getElementById('lf-theme')) return;
+  const s = document.createElement('style');
+  s.id = 'lf-theme';
+  s.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+    :root {
+      --dark:    #ffffff !important;
+      --dark2:   #f5f5f7 !important;
+      --dark3:   #e8e8ed !important;
+      --card:    rgba(0,0,0,0.03) !important;
+      --glass:   rgba(0,0,0,0.04) !important;
+      --border:  rgba(0,0,0,0.08) !important;
+      --border2: rgba(0,113,227,0.3) !important;
+      --muted:   #6e6e73 !important;
+      --text:    #1d1d1f !important;
+      --accent:  #0071e3 !important;
+      --accent2: #0077ed !important;
+      --accent3: #0a84ff !important;
+      --green:   #1a7f1a !important;
+      --shadow-sm: 0 2px 12px rgba(0,0,0,.06) !important;
+      --shadow-md: 0 4px 24px rgba(0,0,0,.08) !important;
+      --shadow-xl: 0 8px 40px rgba(0,0,0,.10) !important;
+      --glow:    0 0 20px rgba(0,113,227,.12) !important;
+      --glow2:   0 0 40px rgba(0,113,227,.08) !important;
+    }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important; background: #f5f5f7 !important; color: #1d1d1f !important; }
+    .bg-orbs { display: none !important; }
+    .sidebar { background: #ffffff !important; border-right: 1px solid rgba(0,0,0,.08) !important; box-shadow: 2px 0 12px rgba(0,0,0,.04) !important; }
+    .sidebar-brand { border-bottom: 1px solid rgba(0,0,0,.08) !important; }
+    .brand-name { color: #1d1d1f !important; }
+    .brand-badge { background: #0071e3 !important; color: #fff !important; }
+    .nav-item { color: #6e6e73 !important; border-radius: 10px !important; }
+    .nav-item:hover { background: rgba(0,113,227,.07) !important; color: #0071e3 !important; }
+    .nav-item.active { background: rgba(0,113,227,.10) !important; color: #0071e3 !important; font-weight: 700 !important; }
+    .sidebar-footer { border-top: 1px solid rgba(0,0,0,.08) !important; }
+    .btn-nav-signout { background: rgba(0,0,0,.05) !important; color: #6e6e73 !important; border: 1px solid rgba(0,0,0,.08) !important; border-radius: 8px !important; }
+    .btn-nav-signout:hover { background: rgba(239,68,68,.08) !important; color: #dc2626 !important; }
+    .page-header { background: #ffffff !important; border-bottom: 1px solid rgba(0,0,0,.07) !important; box-shadow: 0 1px 8px rgba(0,0,0,.04) !important; }
+    .stat-card, .card, .panel, [class*="card"], [class*="panel"] { background: #ffffff !important; border: 1px solid rgba(0,0,0,.07) !important; box-shadow: 0 2px 12px rgba(0,0,0,.05) !important; }
+    .btn-cta, .btn-primary, [class*="btn-cta"] { background: #0071e3 !important; border-color: #0071e3 !important; }
+    .btn-cta:hover, .btn-primary:hover { background: #0077ed !important; }
+    .table-wrap, .data-table { background: #ffffff !important; }
+    .data-table thead tr { background: #f5f5f7 !important; }
+    .data-table th { color: #6e6e73 !important; border-bottom: 1px solid rgba(0,0,0,.08) !important; }
+    .data-table td { border-bottom: 1px solid rgba(0,0,0,.05) !important; color: #1d1d1f !important; }
+    .data-table tbody tr:hover { background: rgba(0,113,227,.04) !important; }
+    input, select, textarea { background: #ffffff !important; border: 1px solid rgba(0,0,0,.12) !important; color: #1d1d1f !important; border-radius: 10px !important; }
+    input:focus, select:focus, textarea:focus { border-color: #0071e3 !important; box-shadow: 0 0 0 3px rgba(0,113,227,.12) !important; }
+    .af-toast { border-radius: 12px !important; }
+    h1, h2, h3, h4 { color: #1d1d1f !important; }
+    .section-pill { background: rgba(0,113,227,.08) !important; color: #0071e3 !important; border-color: rgba(0,113,227,.2) !important; }
+  `;
+  document.head.appendChild(s);
+}
 
 // ─── ADMIN NAV ───────────────────────────────────────────────
 export function adminNav(activePage = '') {
@@ -11,15 +70,12 @@ export function adminNav(activePage = '') {
     { href: '/admin/leads.html',            icon: '👥', label: 'Leads' },
     { href: '/admin/pipeline-manager.html', icon: '🎯', label: 'Manager' },
     { href: '/admin/outreach-hub.html',     icon: '📡', label: 'Outreach' },
-    { href: '/admin/clients.html',          icon: '🏢', label: 'Clients' },
     { href: '/admin/sequences.html',        icon: '📧', label: 'Sequences' },
     { href: '/admin/websites.html',         icon: '🌐', label: 'Websites' },
     { href: '/admin/proposals.html',        icon: '📄', label: 'Proposals' },
     { href: '/admin/analytics.html',        icon: '📈', label: 'Analytics' },
     { href: '/admin/settings.html',         icon: '⚙️', label: 'Settings' },
     { href: '/admin/credentials.html',      icon: '🔑', label: 'Credentials' },
-    { href: '/admin/agency.html',           icon: '🏢', label: 'Agency' },
-    { href: '/admin/agency-clients.html',   icon: '👥', label: 'Agency Clients' },
   ];
 
   const items = links.map(l => {
@@ -33,9 +89,9 @@ export function adminNav(activePage = '') {
   return `
     <nav class="sidebar" id="sidebar">
       <div class="sidebar-brand">
-        <span class="brand-icon">🤖</span>
-        <span class="brand-name">AutoFlow</span>
-        <span class="brand-badge">v7</span>
+        <span class="brand-icon">⚡</span>
+        <span class="brand-name">LeadFyn</span>
+        <span class="brand-badge">Solo</span>
       </div>
       <div class="nav-links">${items}</div>
       <div class="sidebar-footer">
@@ -69,7 +125,7 @@ export function clientNav(activePage = '') {
     <nav class="sidebar" id="sidebar">
       <div class="sidebar-brand">
         <span class="brand-icon">🤖</span>
-        <span class="brand-name">AutoFlow</span>
+        <span class="brand-name">LeadFyn</span>
         <span class="brand-badge">Portal</span>
       </div>
       <div class="nav-links">${items}</div>

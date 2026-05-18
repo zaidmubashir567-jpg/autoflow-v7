@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BrightSmile Dental — Premium Dental Care</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+:root{--blue:#0071e3;--navy:#0a2540;--light:#f0f7ff;--text:#1d1d1f;--text2:#6e6e73;}
+body{font-family:'Inter',sans-serif;color:var(--text);overflow-x:hidden;}
+/* DEMO BANNER */
+.demo-banner{background:var(--navy);color:#fff;text-align:center;padding:.6rem;font-size:.82rem;position:sticky;top:0;z-index:9999;}
+.demo-banner a{color:#5ac8fa;text-decoration:none;font-weight:600;}
+/* NAV */
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 5%;height:70px;background:#fff;box-shadow:0 1px 0 rgba(0,0,0,.08);}
+.logo{font-size:1.3rem;font-weight:800;color:var(--navy);}
+.logo span{color:var(--blue);}
+.nav-links{display:flex;gap:2rem;list-style:none;}
+.nav-links a{text-decoration:none;color:var(--text2);font-weight:500;font-size:.92rem;}
+.nav-book{background:var(--blue);color:#fff;border:none;padding:.6rem 1.4rem;border-radius:980px;font-weight:700;cursor:pointer;font-size:.9rem;}
+/* HERO */
+.hero{display:grid;grid-template-columns:1fr 1fr;min-height:600px;align-items:center;gap:3rem;padding:80px 5%;background:linear-gradient(135deg,#f0f7ff 0%,#fff 60%);}
+.hero h1{font-size:clamp(2rem,4vw,3.2rem);font-weight:800;letter-spacing:-1.5px;line-height:1.1;margin-bottom:1.2rem;color:var(--navy);}
+.hero h1 span{color:var(--blue);}
+.hero p{color:var(--text2);font-size:1rem;line-height:1.7;margin-bottom:2rem;}
+.hero-btns{display:flex;gap:1rem;}
+.btn-p{background:var(--blue);color:#fff;border:none;padding:.8rem 1.8rem;border-radius:980px;font-weight:700;cursor:pointer;font-size:.95rem;}
+.btn-s{background:transparent;color:var(--navy);border:2px solid rgba(0,0,0,.12);padding:.8rem 1.8rem;border-radius:980px;font-weight:700;cursor:pointer;font-size:.95rem;}
+.hero-image{background:linear-gradient(135deg,#c5e3f7,#e8f4fd);border-radius:28px;height:400px;display:flex;align-items:center;justify-content:center;font-size:8rem;}
+/* TRUST */
+.trust{background:var(--navy);color:#fff;display:flex;justify-content:center;gap:4rem;padding:2rem 5%;flex-wrap:wrap;}
+.trust-item{text-align:center;}
+.trust-item .val{font-size:2rem;font-weight:900;letter-spacing:-1px;}
+.trust-item .lbl{font-size:.82rem;color:rgba(255,255,255,.6);margin-top:.2rem;}
+/* SERVICES */
+.services{padding:80px 5%;background:#fff;}
+.services h2{text-align:center;font-size:2.2rem;font-weight:800;letter-spacing:-1px;margin-bottom:.8rem;color:var(--navy);}
+.services .sub{text-align:center;color:var(--text2);margin-bottom:3rem;}
+.service-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1.5rem;max-width:900px;margin:0 auto;}
+.srv{background:var(--light);border-radius:20px;padding:2rem 1.5rem;text-align:center;}
+.srv-icon{font-size:2.2rem;margin-bottom:.8rem;}
+.srv h3{font-size:1rem;font-weight:700;margin-bottom:.4rem;color:var(--navy);}
+.srv p{color:var(--text2);font-size:.85rem;line-height:1.5;}
+/* BOOKING */
+.booking{background:var(--navy);color:#fff;padding:80px 5%;display:grid;grid-template-columns:1fr 1fr;gap:4rem;align-items:center;}
+.booking h2{font-size:2.2rem;font-weight:800;letter-spacing:-1px;margin-bottom:1rem;}
+.booking p{color:rgba(255,255,255,.65);line-height:1.7;margin-bottom:1.5rem;}
+.book-form{display:flex;flex-direction:column;gap:1rem;}
+.book-form input,.book-form select{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:.85rem 1rem;color:#fff;font-size:.9rem;font-family:'Inter',sans-serif;outline:none;}
+.book-form input::placeholder{color:rgba(255,255,255,.4);}
+.book-form select option{background:var(--navy);}
+.book-btn{background:var(--blue);color:#fff;border:none;padding:.9rem;border-radius:980px;font-weight:700;cursor:pointer;font-size:.95rem;}
+/* TESTIMONIALS */
+.testimonials{padding:80px 5%;background:var(--light);}
+.testimonials h2{text-align:center;font-size:2rem;font-weight:800;letter-spacing:-1px;margin-bottom:3rem;color:var(--navy);}
+.testi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem;max-width:900px;margin:0 auto;}
+.testi{background:#fff;border-radius:20px;padding:2rem;box-shadow:0 4px 20px rgba(0,0,0,.06);}
+.stars{color:#fbbf24;font-size:1rem;margin-bottom:.8rem;}
+.testi p{font-style:italic;color:var(--text2);line-height:1.6;margin-bottom:1rem;font-size:.92rem;}
+.testi-author{font-weight:700;font-size:.88rem;color:var(--navy);}
+/* FOOTER */
+footer{background:#000;color:rgba(255,255,255,.5);padding:2rem 5%;text-align:center;font-size:.83rem;}
+footer a{color:rgba(255,255,255,.4);text-decoration:none;margin:0 .8rem;}
+@media(max-width:700px){.hero,.booking{grid-template-columns:1fr;}.nav-links{display:none;}.trust{gap:2rem;}.hero-image{height:250px;font-size:5rem;}}
+</style>
+</head>
+<body>
+<div class="demo-banner">📌 This is a demo site built by <a href="/">LeadFyn</a> — AI-powered lead generation for local businesses.</div>
+<nav>
+  <div class="logo">Bright<span>Smile</span> Dental</div>
+  <ul class="nav-links">
+    <li><a href="#">Services</a></li>
+    <li><a href="#">About Us</a></li>
+    <li><a href="#">Patients</a></li>
+    <li><a href="#">Contact</a></li>
+  </ul>
+  <button class="nav-book">Book Appointment</button>
+</nav>
+<section class="hero">
+  <div>
+    <h1>Your Perfect Smile<br>Starts <span>Right Here</span></h1>
+    <p>Award-winning dental care in the heart of the city. From routine check-ups to complete smile makeovers — we're here for your whole family.</p>
+    <div class="hero-btns">
+      <button class="btn-p">Book Appointment</button>
+      <button class="btn-s">Our Services</button>
+    </div>
+  </div>
+  <div class="hero-image">🦷</div>
+</section>
+<div class="trust">
+  <div class="trust-item"><div class="val">4,200+</div><div class="lbl">Happy Patients</div></div>
+  <div class="trust-item"><div class="val">18 Yrs</div><div class="lbl">Experience</div></div>
+  <div class="trust-item"><div class="val">4.9 ⭐</div><div class="lbl">Google Rating</div></div>
+  <div class="trust-item"><div class="val">Same Day</div><div class="lbl">Emergency Appts</div></div>
+</div>
+<section class="services">
+  <h2>Our Services</h2>
+  <p class="sub">Comprehensive dental care under one roof</p>
+  <div class="service-grid">
+    <div class="srv"><div class="srv-icon">✨</div><h3>Teeth Whitening</h3><p>Professional in-chair whitening. Results in just 60 minutes.</p></div>
+    <div class="srv"><div class="srv-icon">😁</div><h3>Invisalign</h3><p>Clear aligners for a straighter smile without metal braces.</p></div>
+    <div class="srv"><div class="srv-icon">🦷</div><h3>Dental Implants</h3><p>Permanent, natural-looking replacements for missing teeth.</p></div>
+    <div class="srv"><div class="srv-icon">🔬</div><h3>General Check-up</h3><p>Comprehensive exam, x-rays and professional clean.</p></div>
+    <div class="srv"><div class="srv-icon">💎</div><h3>Veneers</h3><p>Porcelain veneers for a Hollywood smile transformation.</p></div>
+    <div class="srv"><div class="srv-icon">🚨</div><h3>Emergency Care</h3><p>Same-day emergency appointments — we're here when you need us.</p></div>
+  </div>
+</section>
+<section class="booking">
+  <div>
+    <h2>Book Your Appointment</h2>
+    <p>Choose your preferred date and service below. We'll confirm your appointment within 2 hours. New patients always welcome.</p>
+    <p style="color:rgba(255,255,255,.4);font-size:.85rem;">📞 0800 123 4567 &nbsp;|&nbsp; 📧 hello@brightsmile.com</p>
+  </div>
+  <form class="book-form" onsubmit="e=>e.preventDefault()">
+    <input type="text" placeholder="Your Full Name">
+    <input type="tel" placeholder="Phone Number">
+    <select><option disabled selected>Select Service</option><option>Teeth Whitening</option><option>Invisalign Consultation</option><option>Implant Consultation</option><option>General Check-up</option><option>Emergency Appointment</option></select>
+    <input type="date">
+    <button type="submit" class="book-btn">Request Appointment →</button>
+  </form>
+</section>
+<section class="testimonials">
+  <h2>What Our Patients Say</h2>
+  <div class="testi-grid">
+    <div class="testi"><div class="stars">★★★★★</div><p>"Absolutely transformed my smile with Invisalign. The team were so professional and reassuring throughout the whole process."</p><div class="testi-author">— Sarah M., London</div></div>
+    <div class="testi"><div class="stars">★★★★★</div><p>"Had a dental emergency on a Sunday and they got me in within two hours. Incredible service. Won't go anywhere else."</p><div class="testi-author">— James T., Manchester</div></div>
+    <div class="testi"><div class="stars">★★★★★</div><p>"The whitening results are amazing — three shades whiter in one session. Worth every penny!"</p><div class="testi-author">— Priya K., Birmingham</div></div>
+  </div>
+</section>
+<footer>
+  <p style="margin-bottom:.8rem;color:rgba(255,255,255,.6);">BrightSmile Dental &nbsp;|&nbsp; <a href="#">Privacy</a> <a href="#">Terms</a> <a href="#">Sitemap</a></p>
+  <p>© 2025 BrightSmile Dental. All rights reserved. &nbsp;|&nbsp; Website built by <a href="/" style="color:#5ac8fa;">LeadFyn</a></p>
+</footer>
+</body>
+</html>

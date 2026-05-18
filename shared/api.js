@@ -1,5 +1,5 @@
 // ============================================================
-// AutoFlow v7 — shared/api.js
+// LeadFyn — shared/api.js
 // All external API wrappers: Places, Hunter, Apollo, Gmail, Twilio, Lob, Vercel
 // Used by Edge Functions (server-side) and some admin pages (browser-side)
 // ============================================================
@@ -241,7 +241,7 @@ export async function sendPostcard({ toName, toAddress, toCity, toState, toZip, 
     method: 'POST',
     headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      description: 'AutoFlow outreach postcard',
+      description: 'LeadFyn outreach postcard',
       to: { name: toName, address_line1: toAddress, address_city: toCity, address_state: toState, address_zip: toZip, address_country: 'US' },
       front: frontHtml,
       back: backHtml,

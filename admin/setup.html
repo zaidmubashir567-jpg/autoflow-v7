@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Setup — AutoFlow</title>
+  <title>Setup — LeadFyn</title>
   <link rel="preconnect" href="https://ndwvsrtyjnaddrifafqk.supabase.co" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <style>
@@ -70,7 +70,7 @@
 </head>
 <body>
 <div class="card">
-  <div class="logo">AutoFlow</div>
+  <div class="logo">LeadFyn</div>
   <h1>First-Time Admin Setup</h1>
   <p>No admin account found for your Google login. Create your admin workspace below — this only runs once.</p>
 
@@ -86,6 +86,8 @@
 </div>
 
 <script type="module">
+  import { injectLeadFynTheme } from '/shared/ui.js';
+  injectLeadFynTheme();
 import { supabase, getSession } from '/shared/auth.js';
 
 const btn        = document.getElementById('btn');

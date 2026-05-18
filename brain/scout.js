@@ -1,5 +1,5 @@
 // ============================================================
-// AutoFlow v7 — Brain: Opportunity Scout (AUTO mode)
+// LeadFyn — Brain: Opportunity Scout (AUTO mode)
 // When AUTO mode is on in pipeline.html, runs every 24h
 // Selects next best niche + city combo based on:
 //   1. Niche performance history (reply rate)
@@ -12,7 +12,7 @@ import { sb } from '../shared/auth.js';
 import { getNicheHistory, getCityHistory } from '../shared/db.js';
 // ↑ getNicheHistory + getCityHistory are now exported from db.js
 
-// ── Top niche+city combos that AutoFlow can auto-suggest ─────
+// ── Top niche+city combos that LeadFyn can auto-suggest ─────
 const NICHE_ROTATION = [
   'plumber', 'electrician', 'HVAC', 'roofer', 'landscaper',
   'dentist', 'chiropractor', 'optometrist', 'veterinarian',
