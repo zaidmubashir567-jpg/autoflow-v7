@@ -68,7 +68,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:999;backdrop-filter:saturate(180
     <li><a href="#pricing">Pricing</a></li>
     <li><a href="#contact">Contact</a></li>
   </ul>
-  <button class="nav-cta" onclick="window.location.href='/admin/setup.html'">Get Started</button>
+  <button class="nav-cta" onclick="document.getElementById('contact').scrollIntoView({behavior:'smooth'})">Get Started</button>
 </nav>
 
 <!-- HERO -->
@@ -77,8 +77,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:999;backdrop-filter:saturate(180
   <h1>We Find the Leads.<br>You <span class="grad">Close the Deals.</span></h1>
   <p>LeadFyn uses AI to identify and deliver qualified local business prospects — so you spend time selling, not searching.</p>
   <div class="hero-btns">
-    <a href="/admin/setup.html" class="btn-primary">Start Getting Leads →</a>
-    <a href="#demos" class="btn-secondary">See Our Work</a>
+    <a href="#demos" class="btn-primary">See Our Work →</a>
+    <a href="#contact" class="btn-secondary">Contact Us</a>
   </div>
   <p class="hero-trust">Serving businesses in <strong>UK · Australia · UAE · Canada · USA · South Africa</strong></p>
 
@@ -297,7 +297,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:999;backdrop-filter:saturate(180
         <li class="price-feat">1 industry niche</li>
         <li class="price-feat">CSV delivery</li>
       </ul>
-      <button class="price-btn" onclick="window.location.href='/admin/setup.html'">Get Started</button>
+      <button class="price-btn" onclick="document.getElementById('contact').scrollIntoView({behavior:'smooth'})">Get Started</button>
     </div>
     <div class="price-card featured">
       <div class="price-badge">⭐ Most Popular</div>
@@ -312,7 +312,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:999;backdrop-filter:saturate(180
         <li class="price-feat">Monthly performance report</li>
         <li class="price-feat">Custom landing page included</li>
       </ul>
-      <button class="price-btn" onclick="window.location.href='/admin/setup.html'">Start Now →</button>
+      <button class="price-btn" onclick="document.getElementById('contact').scrollIntoView({behavior:'smooth'})">Get In Touch →</button>
     </div>
   </div>
 </section>
@@ -359,9 +359,37 @@ footer p{font-size:.8rem;}
 
 <section class="cta-section" id="contact">
   <h2>Ready to Fill Your Pipeline?</h2>
-  <p>Sign in with your Google account to access your LeadFyn dashboard and start finding leads instantly.</p>
-  <a href="/admin/setup.html" class="btn-primary" style="display:inline-block;padding:1rem 2.5rem;border-radius:980px;font-size:1.05rem;font-weight:700;background:#0071e3;color:#fff;text-decoration:none;margin-top:.5rem;">Sign In with Google →</a>
-  <p style="margin-top:1.5rem;color:rgba(255,255,255,.5);font-size:.85rem;">Solo operator access only · zaidmubashir567@gmail.com</p>
+  <p>Tell us about your business and we'll have your first batch of leads ready within 48 hours.</p>
+  <form class="contact-form" onsubmit="handleSubmit(event)">
+    <div class="form-row">
+      <input type="text" placeholder="Your Name" required>
+      <input type="email" placeholder="Business Email" required>
+    </div>
+    <input type="text" placeholder="Business Name">
+    <select required>
+      <option value="" disabled selected>Select Your Industry</option>
+      <option>Dental Clinic</option>
+      <option>Restaurant / Café</option>
+      <option>Real Estate Agency</option>
+      <option>Gym / Fitness Studio</option>
+      <option>Law Firm</option>
+      <option>Trade Services</option>
+      <option>Other</option>
+    </select>
+    <select>
+      <option value="" disabled selected>Your Country</option>
+      <option>United Kingdom</option>
+      <option>Australia</option>
+      <option>United Arab Emirates</option>
+      <option>Canada</option>
+      <option>United States</option>
+      <option>South Africa</option>
+      <option>Other</option>
+    </select>
+    <textarea placeholder="Tell us about your business and what you're looking for..."></textarea>
+    <button type="submit" class="submit-btn">Send My Request →</button>
+    <div class="form-success" id="formSuccess">✓ Message received! We'll be in touch within 24 hours.</div>
+  </form>
 </section>
 
 <footer
