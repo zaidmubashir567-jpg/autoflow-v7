@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -35,7 +35,7 @@
         radial-gradient(ellipse 40% 40% at 80% 90%, rgba(139,92,246,.08), transparent) !important;
       background-attachment: fixed !important;
     }
-    [data-theme="dark"] {
+    [] {
       --color-bg:         var(--d-bg);
       --color-surface:    var(--d-surface);
       --color-border:     var(--d-border);
@@ -195,6 +195,7 @@
     @keyframes brainPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.8)} }
     .brain-dot.idle { background: #475569; animation: none; }
   </style>
+  <link rel="stylesheet" href="/shared/leadfyn-theme.css">
 </head>
 <body>
 <div id="app">Loading…</div>
