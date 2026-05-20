@@ -1,31 +1,20 @@
 {
-  "rewrites": [
-    { "source": "/admin/(.*)", "destination": "/admin/$1" },
-    { "source": "/client/(.*)", "destination": "/client/$1" },
-    { "source": "/shared/(.*)", "destination": "/shared/$1" },
-    { "source": "/brain/(.*)", "destination": "/brain/$1" },
-    { "source": "/", "destination": "/index.html" }
-  ],
-  "redirects": [
-    { "source": "/login", "destination": "/client/login.html", "permanent": false }
-  ],
   "headers": [
     {
-      "source": "/(.*)",
+      "source": "/",
       "headers": [
-        { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Pragma", "value": "no-cache" },
+        { "key": "Expires", "value": "0" }
       ]
     },
     {
-      "source": "/shared/(.*)\\.js",
+      "source": "/(.*).html",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=3600" }
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Pragma", "value": "no-cache" },
+        { "key": "Expires", "value": "0" }
       ]
     }
-  ],
-  "cleanUrls": true,
-  "trailingSlash": false
+  ]
 }
