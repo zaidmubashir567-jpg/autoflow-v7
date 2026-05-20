@@ -22,8 +22,8 @@ html{scroll-behavior:smooth;font-size:16px;}
 body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden;}
 
 /* ── NAV ── */
-nav{position:fixed;top:0;left:0;right:0;z-index:999;backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);background:rgba(255,255,255,.88);border-bottom:1px solid rgba(0,0,0,.08);padding:0 5%;display:flex;align-items:center;justify-content:space-between;height:68px;transition:box-shadow .3s;}
-nav.scrolled{box-shadow:0 4px 24px rgba(0,0,0,.08);}
+nav{position:fixed;top:0;left:0;right:0;z-index:999;backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);background:rgba(255,255,255,.95);border-bottom:1px solid rgba(0,0,0,.12);padding:0 5%;display:flex;align-items:center;justify-content:space-between;height:68px;transition:box-shadow .3s;box-shadow:0 1px 12px rgba(0,0,0,.07);}
+nav.scrolled{box-shadow:0 4px 24px rgba(0,0,0,.12);}
 .nav-logo{display:flex;align-items:center;gap:.5rem;font-size:1.25rem;font-weight:800;letter-spacing:-0.5px;color:var(--text);text-decoration:none;}
 .nav-logo-icon{width:32px;height:32px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1rem;box-shadow:0 2px 8px rgba(0,113,227,.35);}
 .nav-logo span{color:var(--accent);}
@@ -53,7 +53,7 @@ nav.scrolled{box-shadow:0 4px 24px rgba(0,0,0,.08);}
 }
 
 /* ── HERO ── */
-.hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:120px 5% 80px;position:relative;overflow:hidden;}
+.hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:120px 5% 80px;position:relative;overflow:hidden;background:radial-gradient(ellipse 80% 50% at 20% 20%,rgba(0,113,227,.07) 0%,transparent 60%),radial-gradient(ellipse 60% 40% at 80% 80%,rgba(0,180,216,.05) 0%,transparent 55%),#fff;}
 .hero-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(0,113,227,.08);color:var(--accent);border:1px solid rgba(0,113,227,.18);border-radius:980px;padding:.35rem 1rem;font-size:.8rem;font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin-bottom:2rem;}
 .hero h1{font-size:clamp(2.8rem,7vw,6rem);font-weight:800;letter-spacing:-2.5px;line-height:1.05;max-width:900px;margin-bottom:1.5rem;}
 .hero h1 .grad{background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
