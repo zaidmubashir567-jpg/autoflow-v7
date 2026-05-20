@@ -22,23 +22,21 @@ html{scroll-behavior:smooth;font-size:16px;}
 body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden;}
 
 /* ── NAV ── */
-nav{position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#0071e3 0%,#0058b0 100%);padding:0 5%;display:flex;align-items:center;justify-content:space-between;height:68px;transition:box-shadow .3s;box-shadow:0 4px 20px rgba(0,113,227,.35);}
-nav.scrolled{box-shadow:0 6px 32px rgba(0,113,227,.45);}
-/* Logo */
-.nav-logo{display:flex;align-items:center;gap:.65rem;font-size:1.3rem;font-weight:900;letter-spacing:-0.5px;color:#ffffff;text-decoration:none;}
-.nav-logo-icon{width:38px;height:38px;background:#ffffff;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.2rem;box-shadow:0 2px 12px rgba(0,0,0,.2);}
-.nav-logo-text{color:#ffffff;}
-.nav-logo-text span{color:#ffd60a;}
-/* Links */
-.nav-links{display:flex;gap:2rem;list-style:none;align-items:center;}
-.nav-links a{text-decoration:none;color:rgba(255,255,255,.88);font-size:.9rem;font-weight:500;transition:color .2s;padding:.3rem 0;position:relative;}
-.nav-links a::after{content:'';position:absolute;bottom:-2px;left:0;width:0;height:2px;background:#ffd60a;border-radius:2px;transition:width .25s;}
+nav{position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#0071e3 0%,#0058b0 100%);height:68px;display:flex;align-items:center;justify-content:space-between;padding:0 5%;box-shadow:0 4px 20px rgba(0,113,227,.35);transition:box-shadow .3s;}
+nav.scrolled{box-shadow:0 6px 32px rgba(0,113,227,.5);}
+/* Logo — LEFT */
+.nav-logo{display:flex;align-items:center;gap:.6rem;text-decoration:none;flex-shrink:0;}
+.nav-logo svg{display:block;flex-shrink:0;}
+/* Brand name — CENTER (absolute so it never overlaps) */
+.nav-brand{position:absolute;left:50%;transform:translateX(-50%);font-size:1.25rem;font-weight:900;letter-spacing:-0.5px;color:#ffffff;pointer-events:none;white-space:nowrap;}
+.nav-brand em{font-style:normal;color:#ffd60a;}
+/* Right side */
+.nav-right{display:flex;align-items:center;gap:1.4rem;flex-shrink:0;}
+.nav-links{display:flex;gap:1.6rem;list-style:none;align-items:center;margin:0;padding:0;}
+.nav-links a{text-decoration:none;color:rgba(255,255,255,.88);font-size:.875rem;font-weight:500;transition:color .2s;white-space:nowrap;}
 .nav-links a:hover{color:#ffffff;}
-.nav-links a:hover::after{width:100%;}
-/* CTA */
-.nav-right{display:flex;align-items:center;gap:1rem;}
-.nav-cta{background:#ffffff;color:#0071e3;border:none;padding:.55rem 1.4rem;border-radius:980px;font-size:.875rem;font-weight:700;cursor:pointer;transition:all .2s;text-decoration:none;display:inline-block;box-shadow:0 2px 12px rgba(0,0,0,.2);}
-.nav-cta:hover{background:#ffd60a;color:#1d1d1f;transform:scale(1.04);box-shadow:0 4px 20px rgba(0,0,0,.25);}
+.nav-cta{background:#ffffff;color:#0071e3;border:none;padding:.5rem 1.25rem;border-radius:980px;font-size:.875rem;font-weight:700;cursor:pointer;transition:all .2s;text-decoration:none;display:inline-block;white-space:nowrap;box-shadow:0 2px 12px rgba(0,0,0,.2);}
+.nav-cta:hover{background:#ffd60a;color:#1d1d1f;transform:scale(1.04);}
 /* Hamburger */
 .nav-burger{display:none;flex-direction:column;gap:5px;cursor:pointer;padding:4px;background:none;border:none;}
 .nav-burger span{display:block;width:22px;height:2px;background:#ffffff;border-radius:2px;transition:all .25s;}
@@ -46,13 +44,15 @@ nav.scrolled{box-shadow:0 6px 32px rgba(0,113,227,.45);}
 .nav-burger.open span:nth-child(2){opacity:0;}
 .nav-burger.open span:nth-child(3){transform:translateY(-7px) rotate(-45deg);}
 /* Mobile menu */
-.nav-mobile{display:none;position:fixed;top:68px;left:0;right:0;background:#0071e3;border-bottom:2px solid rgba(255,255,255,.15);padding:1.5rem 5%;flex-direction:column;gap:1.2rem;z-index:9998;box-shadow:0 8px 32px rgba(0,0,0,.2);}
+.nav-mobile{display:none;position:fixed;top:68px;left:0;right:0;background:#0058b0;border-bottom:2px solid rgba(255,255,255,.15);padding:1.5rem 5%;flex-direction:column;gap:1.2rem;z-index:9998;box-shadow:0 8px 32px rgba(0,0,0,.2);}
 .nav-mobile.open{display:flex;}
-.nav-mobile a{text-decoration:none;color:rgba(255,255,255,.88);font-size:1rem;font-weight:500;padding:.5rem 0;border-bottom:1px solid rgba(255,255,255,.12);transition:color .2s;}
+.nav-mobile a{text-decoration:none;color:rgba(255,255,255,.9);font-size:1rem;font-weight:500;padding:.5rem 0;border-bottom:1px solid rgba(255,255,255,.12);transition:color .2s;}
+.nav-mobile a:last-child{border-bottom:none;}
 .nav-mobile a:hover{color:#ffd60a;}
-.nav-mobile .nav-cta{background:#fff;color:#0071e3;text-align:center;margin-top:.5rem;padding:.75rem;width:100%;}
-@media(max-width:780px){
-  .nav-links,.nav-right .nav-cta{display:none;}
+.nav-mobile .nav-cta{background:#fff;color:#0071e3;text-align:center;border-radius:980px;padding:.75rem;width:100%;border-bottom:none;}
+@media(max-width:700px){
+  .nav-links{display:none;}
+  .nav-brand{font-size:1.05rem;}
   .nav-burger{display:flex;}
 }
 
@@ -86,18 +86,27 @@ nav.scrolled{box-shadow:0 6px 32px rgba(0,113,227,.45);}
 
 <!-- NAV -->
 <nav id="mainNav">
-  <a class="nav-logo" href="#">
-    <div class="nav-logo-icon">⚡</div>
-    <span class="nav-logo-text">Lead<span>Fyn</span></span>
+  <!-- LEFT: Logo D (target/crosshair) -->
+  <a class="nav-logo" href="#" aria-label="LeadFyn home">
+    <svg width="38" height="38" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="52" height="52" rx="12" fill="rgba(255,255,255,0.18)"/>
+      <circle cx="26" cy="26" r="14" stroke="#ffffff" stroke-width="2.5"/>
+      <circle cx="26" cy="26" r="8" stroke="#ffffff" stroke-width="2"/>
+      <circle cx="26" cy="26" r="3" fill="#ffffff"/>
+      <line x1="26" y1="8" x2="26" y2="14" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+      <line x1="26" y1="38" x2="26" y2="44" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+      <line x1="8" y1="26" x2="14" y2="26" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+      <line x1="38" y1="26" x2="44" y2="26" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+    </svg>
   </a>
-  <ul class="nav-links">
-    <li><a href="#how">How It Works</a></li>
-    <li><a href="#niches">Who We Help</a></li>
-    <li><a href="#demos">Demo Sites</a></li>
-    <li><a href="#pricing">Pricing</a></li>
-    <li><a href="#contact">Contact</a></li>
-  </ul>
+  <!-- CENTER: Brand name (absolutely positioned — no overlap possible) -->
+  <span class="nav-brand">Lead<em>Fyn</em></span>
+  <!-- RIGHT: 3 items only -->
   <div class="nav-right">
+    <ul class="nav-links">
+      <li><a href="#pricing">Pricing</a></li>
+      <li><a href="#contact">Contact</a></li>
+    </ul>
     <a href="#contact" class="nav-cta">Get Started →</a>
     <button class="nav-burger" id="burger" onclick="toggleMenu()" aria-label="Menu">
       <span></span><span></span><span></span>
@@ -107,9 +116,6 @@ nav.scrolled{box-shadow:0 6px 32px rgba(0,113,227,.45);}
 
 <!-- MOBILE MENU -->
 <div class="nav-mobile" id="mobileMenu">
-  <a href="#how" onclick="closeMenu()">How It Works</a>
-  <a href="#niches" onclick="closeMenu()">Who We Help</a>
-  <a href="#demos" onclick="closeMenu()">Demo Sites</a>
   <a href="#pricing" onclick="closeMenu()">Pricing</a>
   <a href="#contact" onclick="closeMenu()">Contact</a>
   <a href="#contact" class="nav-cta" onclick="closeMenu()">Get Started →</a>
