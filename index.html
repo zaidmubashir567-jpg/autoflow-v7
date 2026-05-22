@@ -40,6 +40,8 @@ nav.scrolled{box-shadow:0 6px 32px rgba(0,113,227,.5);}
 .nav-links a:hover{color:#ffffff;}
 .nav-cta{background:#ffffff;color:#0071e3;border:none;padding:.5rem 1.25rem;border-radius:980px;font-size:.875rem;font-weight:700;cursor:pointer;transition:all .2s;text-decoration:none;display:inline-block;white-space:nowrap;box-shadow:0 2px 12px rgba(0,0,0,.2);}
 .nav-cta:hover{background:#ffd60a;color:#1d1d1f;transform:scale(1.04);}
+.nav-admin-link{color:rgba(255,255,255,0.55);font-size:.8rem;font-weight:500;text-decoration:none;padding:.4rem .8rem;border:1px solid rgba(255,255,255,0.15);border-radius:8px;transition:all .2s;white-space:nowrap;}
+.nav-admin-link:hover{color:#fff;border-color:rgba(255,255,255,0.4);background:rgba(255,255,255,0.05);}
 /* Hamburger */
 .nav-burger{display:none;flex-direction:column;gap:5px;cursor:pointer;padding:4px;background:none;border:none;}
 .nav-burger span{display:block;width:22px;height:2px;background:#ffffff;border-radius:2px;transition:all .25s;}
@@ -110,6 +112,7 @@ nav.scrolled{box-shadow:0 6px 32px rgba(0,113,227,.5);}
       <li><a href="#pricing">Pricing</a></li>
       <li><a href="#contact">Contact</a></li>
     </ul>
+    <a href="/admin/login.html" class="nav-admin-link">Admin Login</a>
     <a href="#contact" class="nav-cta">Get Started →</a>
     <button class="nav-burger" id="burger" onclick="toggleMenu()" aria-label="Menu">
       <span></span><span></span><span></span>
@@ -121,6 +124,7 @@ nav.scrolled{box-shadow:0 6px 32px rgba(0,113,227,.5);}
 <div class="nav-mobile" id="mobileMenu">
   <a href="#pricing" onclick="closeMenu()">Pricing</a>
   <a href="#contact" onclick="closeMenu()">Contact</a>
+  <a href="/admin/login.html" onclick="closeMenu()">Admin Login</a>
   <a href="#contact" class="nav-cta" onclick="closeMenu()">Get Started →</a>
 </div>
 

@@ -149,19 +149,20 @@ export async function redirectIfAuthed() {
 export async function requireAuth(requiredRole = 'admin') {
   const session = await getSession();
   if (!session) {
-    location.href = '/';
+    // Redirect to the correct login page based on required role
+    location.href = requiredRole === 'client' ? '/client/login.html' : '/admin/login.html';
     return null;
   }
 
   const role = await getUserRole();
 
   if (requiredRole === 'admin' && role !== 'admin') {
-    location.href = role === 'client' ? '/client/dashboard.html' : '/';
+    location.href = role === 'client' ? '/client/dashboard.html' : '/admin/login.html';
     return null;
   }
 
   if (requiredRole === 'client' && role === 'none') {
-    location.href = '/';
+    location.href = '/client/login.html';
     return null;
   }
 
