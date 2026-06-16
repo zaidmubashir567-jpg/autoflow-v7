@@ -35,7 +35,7 @@
         radial-gradient(ellipse 40% 40% at 80% 90%, rgba(139,92,246,.08), transparent) !important;
       background-attachment: fixed !important;
     }
-    [] {
+    :root {
       --color-bg:         var(--d-bg);
       --color-surface:    var(--d-surface);
       --color-border:     var(--d-border);
@@ -229,6 +229,22 @@ document.getElementById('app').innerHTML = `
     </div>
     <div class="page-body">
       <div id="alerts"></div>
+
+      <!-- ── Daily Temperature Panel ───────────────────────── -->
+      <div class="card" style="margin-bottom:20px;padding:16px 20px" id="tempPanel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div class="card-title" style="margin-bottom:0;padding-bottom:0;border-bottom:none">🌡️ Today's Pipeline Temperature</div>
+          <span style="font-size:11px;color:var(--color-text-muted)" id="tempRefreshTime"></span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px" id="tempCards">
+          <div class="skeleton-line" style="height:72px;border-radius:12px"></div>
+          <div class="skeleton-line" style="height:72px;border-radius:12px"></div>
+          <div class="skeleton-line" style="height:72px;border-radius:12px"></div>
+          <div class="skeleton-line" style="height:72px;border-radius:12px"></div>
+        </div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--d-border);font-size:12px;color:var(--color-text-muted)" id="autoReplySummary"></div>
+      </div>
+
       <div class="stats-grid" id="statsGrid" style="margin-bottom:24px">${skeleton(1)}</div>
       <div class="dash-two-col">
         <div class="card">
@@ -273,13 +289,14 @@ document.getElementById('app').innerHTML = `
     </div>
   </main>`;
 
-const [runs, history, drafts, queue, varStats, brainStats] = await Promise.all([
+const [runs, history, drafts, queue, varStats, brainStats, allLeads] = await Promise.all([
   getRecentRuns(clientId, 5).catch(e    => { console.error('[dash] getRecentRuns:', e?.message ?? e); return []; }),
   getRunHistory(clientId, 8).catch(e    => { console.error('[dash] getRunHistory:', e?.message ?? e); return []; }),
   getPendingDrafts(clientId).catch(e    => { console.error('[dash] getPendingDrafts:', e?.message ?? e); return []; }),
   getManualQueue(clientId).catch(e      => { console.error('[dash] getManualQueue:', e?.message ?? e); return []; }),
   getVariationStats(clientId).catch(e   => { console.error('[dash] getVariationStats:', e?.message ?? e); return {}; }),
-  getDashboardStats(clientId).catch(e   => { console.error('[dash] getDashboardStats:', e?.message ?? e); return null; })
+  getDashboardStats(clientId).catch(e   => { console.error('[dash] getDashboardStats:', e?.message ?? e); return null; }),
+  getLeads(clientId).catch(e            => { console.error('[dash] getLeads:', e?.message ?? e); return []; })
 ]);
 
 // Alerts
@@ -295,6 +312,88 @@ if (queue.length > 0)
     <a href="/admin/outreach-hub.html" class="alert-link">Send DMs →</a>
   </div>`);
 document.getElementById('alerts').innerHTML = alerts.join('');
+
+// ── Temperature daily summary ─────────────────────────────────
+(function renderTemperature() {
+  const leads = allLeads ?? [];
+  function getTemp(lead) {
+    if (lead.do_not_contact) return 'dead';
+    switch (lead.stage) {
+      case 'interested': return 'hot';
+      case 'replied':    return 'warm';
+      case 'contacted':  return 'cold';
+      case 'won':        return 'won';
+      case 'lost':       return 'dead';
+      default:           return 'new';
+    }
+  }
+  const counts = { hot: 0, warm: 0, cold: 0, new: 0, won: 0, dead: 0 };
+  leads.forEach(l => { const t = getTemp(l); if (t in counts) counts[t]++; });
+  const interested = leads.filter(l => l.stage === 'interested');
+  const autoReplies = drafts.filter(d => d.status === 'auto_sent').length;
+  const pendingReview = drafts.filter(d => d.status === 'pending_review').length;
+
+  const tileStyle = (bg, border, glow) =>
+    `border-radius:12px;padding:14px 16px;border:1px solid ${border};background:${bg};box-shadow:${glow};`;
+
+  document.getElementById('tempCards').innerHTML = [
+    // HOT
+    `<div style="${tileStyle('rgba(239,68,68,.1)','rgba(239,68,68,.3)','0 0 14px rgba(239,68,68,.15)')}cursor:pointer"
+          onclick="location.href='/admin/leads.html'">
+       <div style="font-size:22px;line-height:1">🔴</div>
+       <div style="font-size:28px;font-weight:900;color:#f87171;margin-top:4px">${counts.hot}</div>
+       <div style="font-size:11px;color:#fca5a5;font-weight:700;margin-top:2px">HOT</div>
+       <div style="font-size:10px;color:rgba(252,165,165,.7);margin-top:2px">INTERESTED — call now</div>
+     </div>`,
+    // WARM
+    `<div style="${tileStyle('rgba(234,179,8,.08)','rgba(234,179,8,.25)','0 0 14px rgba(234,179,8,.1)')}cursor:pointer"
+          onclick="location.href='/admin/leads.html'">
+       <div style="font-size:22px;line-height:1">🟡</div>
+       <div style="font-size:28px;font-weight:900;color:#facc15;margin-top:4px">${counts.warm}</div>
+       <div style="font-size:11px;color:#fde68a;font-weight:700;margin-top:2px">WARM</div>
+       <div style="font-size:10px;color:rgba(253,230,138,.7);margin-top:2px">Emailed — awaiting reply</div>
+     </div>`,
+    // COLD
+    `<div style="${tileStyle('rgba(59,130,246,.08)','rgba(59,130,246,.25)','0 0 14px rgba(59,130,246,.1)')}cursor:pointer"
+          onclick="location.href='/admin/leads.html'">
+       <div style="font-size:22px;line-height:1">🔵</div>
+       <div style="font-size:28px;font-weight:900;color:#60a5fa;margin-top:4px">${counts.cold}</div>
+       <div style="font-size:11px;color:#93c5fd;font-weight:700;margin-top:2px">COLD</div>
+       <div style="font-size:10px;color:rgba(147,197,253,.7);margin-top:2px">Emailed — awaiting reply</div>
+     </div>`,
+    // NEW
+    `<div style="${tileStyle('rgba(148,163,184,.06)','rgba(148,163,184,.15)','none')}cursor:pointer"
+          onclick="location.href='/admin/pipeline.html'">
+       <div style="font-size:22px;line-height:1">⚪</div>
+       <div style="font-size:28px;font-weight:900;color:#94a3b8;margin-top:4px">${counts.new}</div>
+       <div style="font-size:11px;color:#cbd5e1;font-weight:700;margin-top:2px">NEW</div>
+       <div style="font-size:10px;color:rgba(203,213,225,.7);margin-top:2px">Found — not yet contacted</div>
+     </div>`,
+    // WON
+    counts.won > 0 ? `<div style="${tileStyle('rgba(34,197,94,.08)','rgba(34,197,94,.25)','0 0 14px rgba(34,197,94,.12)')}">
+       <div style="font-size:22px;line-height:1">✅</div>
+       <div style="font-size:28px;font-weight:900;color:#4ade80;margin-top:4px">${counts.won}</div>
+       <div style="font-size:11px;color:#86efac;font-weight:700;margin-top:2px">WON</div>
+       <div style="font-size:10px;color:rgba(134,239,172,.7);margin-top:2px">Active retainer</div>
+     </div>` : ''
+  ].filter(Boolean).join('');
+
+  // Auto-reply summary line
+  const summaryParts = [];
+  if (autoReplies > 0)
+    summaryParts.push(`<span style="color:#60a5fa">🤖 <strong>${autoReplies}</strong> auto-replies sent by Claude today</span>`);
+  if (pendingReview > 0)
+    summaryParts.push(`<span style="color:#f87171">👋 <strong>${pendingReview}</strong> INTERESTED ${pendingReview === 1 ? 'lead needs' : 'leads need'} your personal reply</span>`);
+  if (interested.length > 0) {
+    const names = interested.slice(0, 3).map(l => `<strong>${l.business_name}</strong>`).join(', ');
+    summaryParts.push(`<span style="color:#fcd34d">🔥 ${names}${interested.length > 3 ? ` +${interested.length - 3} more` : ''} waiting for your call</span>`);
+  }
+  if (summaryParts.length === 0)
+    summaryParts.push('<span style="color:var(--color-text-muted)">No replies yet — pipeline is hunting. Check back in a few hours.</span>');
+
+  document.getElementById('autoReplySummary').innerHTML = summaryParts.join(' &nbsp;·&nbsp; ');
+  document.getElementById('tempRefreshTime').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+})();
 
 // Stats
 const totalLeads     = history.reduce((s,r) => s + (r.leads_found ?? 0), 0);

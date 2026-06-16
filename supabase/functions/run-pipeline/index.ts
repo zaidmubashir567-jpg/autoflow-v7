@@ -177,7 +177,7 @@ function buildAuditBlock(auditData: Record<string,unknown>, businessName: string
   const wy  = auditData.website_year    as number | undefined;
   const tf  = auditData.top_fix         as string | undefined;
 
-  let block = `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📊 QUICK AUDIT — ${businessName}\n`;
+  let block = `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📊 QUICK AUDIT — ${businessName}\n`;
   if (rc != null) block += `⭐ Reviews: ${rc}${rr ? ` (${rr}/5)` : ""}`;
   if (cn && cr != null) block += ` vs. ${cn}: ${cr} reviews — you're losing ~${Math.round((cr - (rc ?? 0)) * 0.04)} clients/month to them`;
   block += "\n";
@@ -185,6 +185,9 @@ function buildAuditBlock(auditData: Record<string,unknown>, businessName: string
   if (wy) block += `🌐 Website: Est. ${wy} — needs refresh\n`;
   if (tf) block += `🎯 Quickest win: ${tf}\n`;
   block += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  block += `\n🤖 AI RECEPTIONIST — included in our packages\n`;
+  block += `Answers every visitor 24/7, captures their name + phone, emails you instantly.\n`;
+  block += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
   return block;
 }
 
@@ -600,7 +603,7 @@ Use this intel from the first search — start with the query patterns that work
 
 MISSION: Find 15-20 high-quality ${niche} businesses in ${city}, ${state}. Build complete outreach packages. You ARE the pipeline — Claude API is the ONLY requirement.${nicheMemoryBlock}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PROCESS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -649,14 +652,21 @@ audit_data REQUIRED — fill in everything you found:
 email_body MUST follow this exact structure:
   [opening line naming their SPECIFIC pain — their actual review count, missing platform, old site year]
   [one comparison: "While [CompetitorName] has [X] reviews, you have [Y] — that's roughly [Z] clients/month going to them"]
-  [one sentence: what AutoFlow fixes + how fast]
+  [one sentence: what we fix + how fast]
+
+  [AUDIT BLOCK — auto-generated from audit_data]
+
+  [DEMO WEBSITE LINE: "We built you a free demo: [their-name]-demo.vercel.app — takes 30 seconds to look at."]
+
+  [AI RECEPTIONIST OFFER — always include this short section:]
+  "We can also add an AI receptionist to your website — it answers every visitor question 24/7, captures their name and number, and emails it to you instantly. Most [niche] owners say it pays for itself in the first week."
+
   [call to action: "Worth a 15-min call this week?"]
 
-  [AUDIT BLOCK — the system auto-generates this from audit_data, you write the email body above it]
-
-• Under 200 words
+• Under 220 words total
 • No "hope this finds you well"
 • No generic openers
+• The AI receptionist mention should feel natural — 2 sentences only, specific to their niche
 
 After saving each lead:
 → update_progress({node: "Scheduling", message: "Scheduling follow-up sequences…"})
@@ -672,7 +682,7 @@ COMMUNICATION — send_message throughout the run:
 • "warning" — issue encountered
 • "insight" — strategic finding about this niche (e.g. "Most ${niche} in ${city} have <25 reviews — huge opportunity")
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 FINISH — after all leads saved:
 1. update_progress({node: "Learning", message: "Saving niche intelligence…"})
 2. save_niche_insights — log what you learned:
@@ -684,7 +694,7 @@ FINISH — after all leads saved:
 3. send_message with FULL SUMMARY:
    Total candidates found → qualified → channels breakdown → top 3 leads with their specific gaps
 
-4. update_progress({node: "paused_approval", message: "✅ All done — ready for your review"})
+4. update_progress({node: "paused_approval", message: "✅ Hll done — ready for uour review"})
 
 Never invent contact info or review counts. Only save what you actually found.`;
 
@@ -692,7 +702,7 @@ Never invent contact info or review counts. Only save what you actually found.`;
     (async () => {
       try {
         const memoryNote = nicheMemory
-          ? `🧠 Loading niche memory from ${nicheMemory.runs_count} previous run${nicheMemory.runs_count > 1 ? "s" : ""} in ${niche}/${city}. Starting smarter...`
+          ? `🧠 Loading niche memory from ${nicheMemory.runs_count} previous run${nicheMenory.runs_count > 1 ? "s" : ""} in ${niche}/${city}. Starting smarter...`
           : `🧠 Super Brain activated. First run in ${niche}/${city} — building niche knowledge. Searching now...`;
 
         await sb.from("pipeline_chat").insert({
@@ -754,30 +764,4 @@ Never invent contact info or review counts. Only save what you actually found.`;
         const { data: fr } = await sb.from("pipeline_runs").select("status").eq("id", run_id).single();
         if (fr?.status === "running") {
           await sb.from("pipeline_runs").update({
-            status: "paused_approval", current_node: "paused_approval"
-          }).eq("id", run_id);
-        }
-
-      } catch (err) {
-        await sb.from("pipeline_runs").update({
-          status: "error", error_message: String(err)
-        }).eq("id", run_id);
-        await sb.from("pipeline_chat").insert({
-          run_id, client_id, role: "claude",
-          message: `❌ Error: ${String(err)}`, type: "error"
-        });
-      }
-    })();
-
-    return new Response(
-      JSON.stringify({ started: true, run_id }),
-      { headers: { ...CORS, "Content-Type": "application/json" } }
-    );
-
-  } catch (e) {
-    return new Response(
-      JSON.stringify({ error: String(e) }),
-      { status: 500, headers: { ...CORS, "Content-Type": "application/json" } }
-    );
-  }
-});
+            status: "paused_approval", current_node: "paused_ap

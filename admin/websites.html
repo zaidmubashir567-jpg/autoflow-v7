@@ -17,12 +17,18 @@ injectSharedCSS(); await requireAuth('admin'); const clientId = await getClientI
 document.getElementById('app').innerHTML = `${adminNav('Websites')}<main class="main">
   <div class="page-header"><h1 class="page-title">Websites</h1><p class="page-sub">Sofia-generated redesigns deployed to Vercel</p></div>
   <div class="page-body"><div class="card" id="wTable">Loading…</div></div></main>`;
-const { data } = await supabase.from('websites').select('*, leads(business_name,city,niche)').eq('client_id', clientId).order('created_at',{ascending:false});
+// BUG FIX: generate-site saves to leads.demo_url, NOT a separate 'websites' table
+const { data } = await supabase
+  .from('leads')
+  .select('id, business_name, city, niche, demo_url, updated_at')
+  .eq('client_id', clientId)
+  .not('demo_url', 'is', null)
+  .order('updated_at', {ascending: false});
 const cols = [
-  {key:'leads',label:'Business',render:(v)=>`<div style="font-weight:600">${v?.business_name??'—'}</div><div style="font-size:11px;color:var(--color-text-muted)">${v?.city??''} · ${v?.niche??''}</div>`},
-  {key:'deploy_status',label:'Status',render:v=>`<span class="ds-${v}">${v}</span>`},
-  {key:'vercel_url',label:'URL',render:v=>v?`<a href="${v}" target="_blank" style="font-size:13px;color:var(--color-accent)">${v}</a>`:'—'},
-  {key:'created_at',label:'Created',render:v=>new Date(v).toLocaleDateString()}
+  {key:'business_name',label:'Business',render:(v,row)=>`<div style="font-weight:600">${v??'—'}</div><div style="font-size:11px;color:var(--color-text-muted)">${row?.city??''} · ${row?.niche??''}</div>`},
+  {key:'demo_url',label:'Status',render:v=>v?`<span class="ds-deployed">deployed</span>`:`<span class="ds-pending">pending</span>`},
+  {key:'demo_url',label:'URL',render:v=>v?`<a href="${v}" target="_blank" style="font-size:13px;color:var(--color-accent)">${v}</a>`:'—'},
+  {key:'updated_at',label:'Generated',render:v=>new Date(v).toLocaleDateString()}
 ];
 document.getElementById('wTable').innerHTML = dataTable(cols, data??[], {emptyMsg:'No websites yet — run a pipeline to generate redesigns.', colCount:4});
 </script>

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Book a Call — LeadFyn</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:#f5f5f7;color:#1d1d1f;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:32px 16px}
+.logo{font-size:1.4rem;font-weight:800;color:#1d1d1f;margin-bottom:32px;text-align:center}
+.logo span{color:#0071e3}
+.card{background:#fff;border-radius:20px;box-shadow:0 4px 32px rgba(0,0,0,.08);padding:32px;max-width:520px;width:100%}
+h1{font-size:1.5rem;font-weight:800;letter-spacing:-.5px;margin-bottom:6px}
+.sub{color:#6e6e73;font-size:.9rem;margin-bottom:24px;line-height:1.5}
+.badge{display:inline-block;background:#e8f4fd;color:#0071e3;font-size:.75rem;font-weight:700;padding:3px 10px;border-radius:980px;margin-bottom:16px}
+.step{font-size:.75rem;font-weight:600;color:#6e6e73;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+.day-group{margin-bottom:20px}
+.day-label{font-size:.85rem;font-weight:600;color:#1d1d1f;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid rgba(0,0,0,.07)}
+.slots{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.slot-btn{padding:8px 14px;border-radius:10px;border:1.5px solid rgba(0,0,0,.12);background:#fff;font-size:.83rem;font-weight:500;cursor:pointer;transition:all .15s;color:#1d1d1f}
+.slot-btn:hover{border-color:#0071e3;color:#0071e3;background:#f0f7ff}
+.slot-btn.selected{background:#0071e3;color:#fff;border-color:#0071e3}
+.slot-btn:disabled{opacity:.4;cursor:not-allowed}
+.divider{border:none;border-top:1px solid rgba(0,0,0,.07);margin:24px 0}
+.form-group{margin-bottom:16px}
+label{display:block;font-size:.83rem;font-weight:600;color:#1d1d1f;margin-bottom:6px}
+input,textarea{width:100%;border:1.5px solid rgba(0,0,0,.12);border-radius:10px;padding:10px 14px;font-size:.9rem;font-family:inherit;outline:none;transition:border-color .15s;color:#1d1d1f;background:#fff}
+input:focus,textarea:focus{border-color:#0071e3}
+.confirm-btn{width:100%;padding:13px;border-radius:980px;border:none;background:#0071e3;color:#fff;font-size:1rem;font-weight:700;cursor:pointer;transition:all .2s;margin-top:8px}
+.confirm-btn:hover{background:#0077ed;transform:scale(1.01)}
+.confirm-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.success{text-align:center;padding:32px 16px}
+.success .check{font-size:3.5rem;margin-bottom:16px}
+.success h2{font-size:1.4rem;font-weight:800;margin-bottom:8px}
+.success p{color:#6e6e73;font-size:.9rem;line-height:1.6}
+.success .meeting-card{background:#f0f7ff;border:1.5px solid rgba(0,113,227,.2);border-radius:12px;padding:16px;margin-top:20px;text-align:left}
+.meeting-card .mrow{display:flex;align-items:center;gap:8px;font-size:.88rem;margin-bottom:8px}
+.meeting-card .mrow:last-child{margin-bottom:0}
+.loading{text-align:center;padding:32px;color:#6e6e73;font-size:.9rem}
+.error-card{background:#fff0f0;border:1.5px solid rgba(255,59,48,.2);border-radius:12px;padding:16px;color:#a32d2d;font-size:.88rem;text-align:center;margin-bottom:20px}
+.cancel-link{text-align:center;margin-top:16px;font-size:.8rem;color:#6e6e73}
+.cancel-link a{color:#0071e3;text-decoration:none}
+.already-booked{text-align:center;padding:24px}
+</style>
+</head>
+<body>
+
+<div class="logo">Lead<span>Fyn</span></div>
+
+<div class="card" id="mainCard">
+  <div class="loading" id="loadingState">Loading your booking page...</div>
+</div>
+
+<script>
+const SB_URL  = 'https://ndwvsrtyjnaddrifafqk.supabase.co';
+const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kd3ZzcnR5am5hZGRyaWZhZnFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4ODMxMDgsImV4cCI6MjA5MzQ1OTEwOH0.7XoOKB74DGiXac3cfSSiyvREuWZ7qbQ2QbxE6d1rnlM';
+const FN_BASE = `${SB_URL}/functions/v1`;
+
+const params   = new URLSearchParams(location.search);
+const token    = params.get('t');
+const action   = params.get('action');
+const card     = document.getElementById('mainCard');
+
+let meeting    = null;
+let slots      = [];
+let selectedAt = null;
+
+async function init() {
+  if (!token) { showError('No booking token found. Please use the link from your email.'); return; }
+  if (action === 'cancel') { await handleCancel(); return; }
+
+  const res = await fetch(`${FN_BASE}/book-meeting?token=${token}`, {
+    headers: { 'Authorization': `Bearer ${SB_ANON}`, 'apikey': SB_ANON }
+  });
+  const data = await res.json();
+
+  if (!res.ok || data.error) { showError(data.error ?? 'Failed to load booking page.'); return; }
+
+  if (data.status === 'already_booked') { showAlreadyBooked(data.meeting); return; }
+
+  meeting = data.meeting;
+  slots   = data.available_slots ?? [];
+  renderBooking();
+}
+
+function renderBooking() {
+  const bizName = meeting?.leads?.business_name ?? 'your business';
+
+  // Group slots by day
+  const byDay = {};
+  for (const s of slots) {
+    if (!byDay[s.day]) byDay[s.day] = [];
+    byDay[s.day].push(s);
+  }
+
+  const daysHtml = Object.entries(byDay).map(([day, daySlots]) => `
+  <div class="day-group">
+      <div class="day-label">${day}</div>
+      <div class="slots">
+        ${daySlots.map(s => `<button class="slot-btn" data-utc="${s.utc}" onclick="selectSlot(this,'${s.utc}','${day} ${s.label}')">${s.label}</button>`).join('')}
+      </div>
+    </div>`).join('');
+
+  const noSlots = slots.length === 0 ? '<div class="error-card">No available time slots in the next 14 days. Please contact us directly.</div>' : '';
+
+  card.innerHTML = `
+    <div class="badge">📅 Book a Call</div>
+    <h1>Schedule Your Strategy Call</h1>
+    <div class="sub">Pick a time that works for you — we'll talk about growing <strong>${bizName}</strong> with LeadFyn.</div>
+    ${noSlots}
+    ${slots.length > 0 ? `
+    <div class="step">Step 1 — Choose a time</div>
+    ${daysHtml}
+    <div class="divider"></div>
+    <div class="step">Step 2 — Your details</div>
+    ` : ''}
+    <div class="form-group">
+      <label>Your Name *</label>
+      <input id="rName" type="text" placeholder="Ahmed Hassan" required>
+    </div>
+    <div class="form-group">
+      <label>Phone Number</label>
+      <input id="rName" type="tel" placeholder="+1 (555) 000-0000">
+    </div>
+    <button class="confirm-btn" id="confirmBtn" onclick="confirmBooking()" ${slots.length === 0 ? 'disabled' : ''}>Confirm Booking →</button>
+    <div id="bookErr" style="color:#a32d2d;font-size:.82rem;text-align:center;margin-top:10px"></div>
+  `;
+}
+
+function selectSlot(el, utc, label) {
+  document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedAt = utc;
+  document.getElementById('confirmBtn').textContent = `Confirm: ${label} →`;
+}
+
+also do the success/error stuff no one cares
+init();
+</script>
+</body>
+</html>

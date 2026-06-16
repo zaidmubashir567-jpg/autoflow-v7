@@ -63,6 +63,13 @@ document.getElementById('app').innerHTML = `
             <option value="no_email">No email</option>
             <option value="dnc">Do Not Contact</option>
           </select>
+          <select id="tempFilter" onchange="filterLeads()" style="padding:8px;border:1px solid var(--color-border);border-radius:6px;font-size:14px">
+            <option value="">🌡️ All temps</option>
+            <option value="hot">🔴 Hot (Interested)</option>
+            <option value="warm">🟡 Warm (Replied)</option>
+            <option value="cold">🔵 Cold (Contacted)</option>
+            <option value="new">⚪ New</option>
+          </select>
           <span id="leadCount" style="margin-left:auto;font-size:13px;color:var(--color-text-muted)"></span>
         </div>
       </div>
@@ -81,10 +88,38 @@ allLeads = await getLeads(clientId);
 filtered  = [...allLeads];
 renderTable();
 
+function getTemperature(lead) {
+  if (lead.do_not_contact) return 'dead';
+  switch (lead.stage) {
+    case 'interested': return 'hot';
+    case 'replied':    return 'warm';
+    case 'contacted':  return 'cold';
+    case 'new':        return 'new';
+    case 'won':        return 'won';
+    case 'lost':       return 'dead';
+    default:           return 'new';
+  }
+}
+
+function tempBadge(lead) {
+  const t = getTemperature(lead);
+  const map = {
+    hot:  { icon: '🔴', label: 'Hot',  bg: 'rgba(239,68,68,.12)',   color: '#f87171' },
+    warm: { icon: '🟡', label: 'Warm', bg: 'rgba(234,179,8,.12)',   color: '#facc15' },
+    cold: { icon: '🔵', label: 'Cold', bg: 'rgba(59,130,246,.12)',  color: '#60a5fa' },
+    new:  { icon: '⚪', label: 'New',  bg: 'rgba(148,163,184,.1)', color: '#94a3b8' },
+    won:  { icon: '✅', label: 'Won',  bg: 'rgba(34,197,94,.12)',   color: '#4ade80' },
+    dead: { icon: '❌', label: 'Dead', bg: 'rgba(100,116,139,.1)', color: '#64748b' },
+  };
+  const m = map[t] || map.new;
+  return `<span style="font-size:12px;padding:2px 8px;border-radius:10px;font-weight:700;background:${m.bg};color:${m.color}">${m.icon} ${m.label}</span>`;
+}
+
 window.filterLeads = function() {
   const search = document.getElementById('searchInput').value.toLowerCase();
   const stage  = document.getElementById('stageFilter').value;
   const email  = document.getElementById('emailFilter').value;
+  const temp   = document.getElementById('tempFilter').value;
 
   filtered = allLeads.filter(l => {
     if (search && !l.business_name.toLowerCase().includes(search)) return false;
@@ -92,6 +127,7 @@ window.filterLeads = function() {
     if (email === 'has_email' && !l.email) return false;
     if (email === 'no_email'  && l.email)  return false;
     if (email === 'dnc'       && !l.do_not_contact) return false;
+    if (temp && getTemperature(l) !== temp) return false;
     return true;
   });
   renderTable();
@@ -105,6 +141,7 @@ function renderTable() {
       render: (v, r) => `<div style="font-weight:600">${v}</div><div style="font-size:11px;color:var(--color-text-muted)">${r.city}, ${r.state}</div>` },
     { key: 'niche',  label: 'Niche',  render: v => `<span style="font-size:13px">${v ?? '—'}</span>` },
     { key: 'score',  label: 'Score',  render: v => `<strong>${v}/10</strong>` },
+    { key: 'stage',  label: 'Temp',   render: (_, r) => tempBadge(r) },
     { key: 'email',  label: 'Email',  render: (v, r) => v
         ? `<span style="font-size:12px">${v}<br><span class="conf-${r.email_confidence}">${r.email_confidence ?? ''}</span></span>`
         : '<span style="color:var(--color-text-muted)">—</span>' },
@@ -125,7 +162,7 @@ function renderTable() {
   // Fetch channels for display (join already included if using getLeadWithChannels)
   document.getElementById('leadsTable').innerHTML = dataTable(cols, filtered, {
     emptyMsg: 'No leads found. Run a pipeline to start finding businesses.',
-    colCount: 9
+    colCount: 10
   });
 }
 
@@ -150,7 +187,7 @@ window.exportToSheets = async function() {
   } catch(e) {
     toast('Export error: ' + e.message, 'error');
   } finally {
-    btn.disabled = false; btn.innerHTML = '<span>📊</span> Export to Google Sheets';
+    btn.disabled = false; btn.innerHTML = '<span>🍊</span> Export to Google Sheets';
   }
 };
 

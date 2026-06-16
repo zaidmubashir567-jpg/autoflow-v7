@@ -12,7 +12,7 @@ import { sb } from '../shared/auth.js';
 import { getNicheHistory, getCityHistory } from '../shared/db.js';
 // ↑ getNicheHistory + getCityHistory are now exported from db.js
 
-// ── Top niche+city combos that LeadFyn can auto-suggest ─────
+// ── Top niche+city combos that LeadFyn can auto-suggest ────
 const NICHE_ROTATION = [
   'plumber', 'electrician', 'HVAC', 'roofer', 'landscaper',
   'dentist', 'chiropractor', 'optometrist', 'veterinarian',
@@ -76,12 +76,19 @@ export async function pickNextOpportunity(clientId, config = {}) {
       .map(c => c.city.toLowerCase())
   );
 
-  const availableCities = cities.filter(c => !recentCities.has(c.toLowerCase()));
-  const city = availableCities.length > 0
-    ? availableCities[Math.floor(Math.random() * availableCities.length)]
-    : cities[Math.floor(Math.random() * cities.length)]; // All cities used — pick random
+  // Prefer Tier A (high-income) cities — bigger retainer per deal
+  const availableCities = sortCitiesByTier(
+    cities.filter(c => !recentCities.has(c.toLowerCase()))
+  );
+  const pool = availableCities.length > 0 ? availableCities : sortCitiesByTier(cities);
+
+  // Pick from the top Tier A cities with some randomness (not always the exact same city)
+  const topCut = Math.min(5, pool.length);
+  const city = pool[Math.floor(Math.random() * topCut)];
 
   const niche = sortedNiches[0] ?? NICHE_ROTATION[0];
+  const tier  = getCityTier(city);
+  const range = getCityRetainerRange(city);
 
   return {
     niche,
@@ -89,7 +96,9 @@ export async function pickNextOpportunity(clientId, config = {}) {
     state,
     lead_count,
     score: nicheScores[niche] ?? 5,
-    reason: buildReason(niche, city, nicheHistory, cityHistory)
+    geo_tier: tier,
+    retainer_range: range,
+    reason: buildReason(niche, city, nicheHistory, cityHistory, tier, range)
   };
 }
 
@@ -104,7 +113,7 @@ export async function autoRun(clientId, clientSettings = {}) {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return { success: false, error: 'Not authenticated' };
 
-  const supabaseUrl = window.__SUPABASE_URL__;
+  const supabaseUrl = window.__SUPABASE_URL_;
   const res = await fetch(`${supabaseUrl}/functions/v1/run-pipeline`, {
     method: 'POST',
     headers: {
@@ -145,11 +154,82 @@ export async function shouldAutoFire(clientId) {
 }
 
 // ── Reason string for UI display ─────────────────────────────
-function buildReason(niche, city, nicheHistory, cityHistory) {
+function buildReason(niche, city, nicheHistory, cityHistory, tier = 'B', range = '$800–1,200/mo') {
   const h = nicheHistory[niche.toLowerCase()];
-  if (!h) return `${niche} in ${city} — untested niche, good opportunity`;
-  if (h.reply_rate > 10) return `${niche} performing well (${h.reply_rate.toFixed(1)}% reply rate)`;
-  return `${niche} in ${city} — rotating for fresh results`;
+  const tierLabel = tier === 'A' ? '🔴 Premium market' : tier === 'B' ? '🟡 Mid market' : '🔵 Value market';
+  const prefix = `${tierLabel} · ${city} (${range})`;
+  if (!h) return `${prefix} — ${niche} untested here, good opportunity`;
+  if (h.reply_rate > 10) return `${prefix} — ${niche} performing well (${h.reply_rate.toFixed(1)}% reply rate)`;
+  return `${prefix} — ${niche} rotating for fresh results`;
+}
+
+// ── Geographic Pricing Intelligence ──────────────────────────
+// Cities ranked by typical retainer value.
+// A = $1,500–2,500/mo  |  B = $800–1,200/mo  |  C = $500–800/mo
+export const GEO_PRICING = {
+  // TIER A — High-income metros, professionals pay more
+  A: {
+    label: 'Premium Market',
+    retainer_range: '$1,500–2,500/mo',
+    cities: [
+      'Austin', 'San Francisco', 'Los Angeles', 'New York City', 'Boston',
+      'Seattle', 'Miami', 'Denver', 'San Diego', 'Chicago',
+      'Washington DC', 'Atlanta', 'Nashville', 'Charlotte', 'Scottsdale',
+      'Dallas', 'Houston', 'Portland', 'Minneapolis', 'Raleigh',
+      'Salt Lake City', 'Phoenix', 'Las Vegas', 'Tampa', 'Orlando',
+      'San Jose', 'Oakland', 'Sacramento', 'Long Beach', 'Irvine'
+    ]
+  },
+  // TIER B — Mid-size metros, solid spending power
+  B: {
+    label: 'Mid Market',
+    retainer_range: '$800–1,200/mo',
+    cities: [
+      'Fort Worth', 'San Antonio', 'Jacksonville', 'Indianapolis', 'Columbus',
+      'Louisville', 'Richmond', 'Virginia Beach', 'Norfolk', 'Omaha',
+      'Kansas City', 'Oklahoma City', 'Tulsa', 'Memphis', 'Knoxville',
+      'Greensboro', 'Richmond', 'Buffalo', 'Cincinnati', 'Cleveland',
+      'Colorado Springs', 'Henderson', 'Mesa', 'Chandler', 'Tempe',
+      'Aurora', 'Bakersfield', 'Riverside', 'Fresno', 'Stockton'
+    ]
+  },
+  // TIER C — Smaller cities, still viable but lower average deal size
+  C: {
+    label: 'Value Market',
+    retainer_range: '$500–800/mo',
+    cities: [
+      'Tucson', 'Reno', 'Salem', 'Eugene', 'Provo', 'Ogden',
+      'Fort Wayne', 'Evansville', 'Duluth', 'Lincoln', 'Saint Paul',
+      'Savannah', 'Augusta', 'Albuquerque', 'Santa Fe', 'Las Cruces',
+      'Lexington', 'St. Petersburg', 'Lubbock', 'El Paso', 'Laredo',
+      'Corpus Christi', 'Amarillo', 'Boise', 'Spokane', 'Tacoma'
+    ]
+  }
+};
+
+// Get tier for a city
+export function getCityTier(city) {
+  if (!city) return 'B';
+  const c = city.toLowerCase();
+  if (GEO_PRICING.A.cities.some(x => x.toLowerCase() === c)) return 'A';
+  if (GEO_PRICING.B.cities.some(x => x.toLowerCase() === c)) return 'B';
+  if (GEO_PRICING.C.cities.some(x => x.toLowerCase() === c)) return 'C';
+  return 'B'; // Unknown city: assume mid-market
+}
+
+// Get expected retainer range for a city
+export function getCityRetainerRange(city) {
+  return GEO_PRICING[getCityTier(city)]?.retainer_range ?? '$800–1,200/mo';
+}
+
+// Sort cities by tier: prioritise Tier A first to maximise revenue per deal
+export function sortCitiesByTier(cities = []) {
+  const tierOrder = { A: 0, B: 1, C: 2 };
+  return [...cities].sort((a, b) => {
+    const tA = tierOrder[getCityTier(a)] ?? 1;
+    const tB = tierOrder[getCityTier(b)] ?? 1;
+    return tA - tB;
+  });
 }
 
 // ── Default US cities for rotation ───────────────────────────
