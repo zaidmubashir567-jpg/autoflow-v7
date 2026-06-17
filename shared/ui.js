@@ -314,7 +314,7 @@ export function statCard(label, value, sub = '', icon = '') {
 
 // ─── PRIORITY BADGE (P1–P5 AI recommendations, Twin pattern) ─
 export function priorityBadge(level) {
-  const colors = { P1:'#ef4444', P2:'#f59e0b', P3:'#3b82f6', P4:'#8b5cf6', P5:'#6f7280' };
+  const colors = { P1:'#ef4444', P2:'#f59e0b', P3:'#3b82f6', P4:'#8b5cf6', P5:'#6b7280' };
   const c = colors[level] ?? colors.P5;
   return `<span class="priority-badge" style="background:${c}">${level}</span>`;
 }
@@ -621,4 +621,9 @@ export function injectSharedCSS() {
   // Stop loader once #app content is injected (MutationObserver)
   const obs = new MutationObserver(() => {
     const app = document.getElementById('app');
-    if (app && app.children.length > 0) { stopLoader
+    if (app && app.children.length > 0) { stopLoader(); obs.disconnect(); }
+  });
+  obs.observe(document.getElementById('app') || document.body, { childList: true, subtree: true });
+  // Fallback: always stop after 4s
+  setTimeout(stopLoader, 4000);
+}
