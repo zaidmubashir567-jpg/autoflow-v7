@@ -351,7 +351,7 @@ document.getElementById('alerts').innerHTML = alerts.join('');
        <div style="font-size:22px;line-height:1">🟡</div>
        <div style="font-size:28px;font-weight:900;color:#facc15;margin-top:4px">${counts.warm}</div>
        <div style="font-size:11px;color:#fde68a;font-weight:700;margin-top:2px">WARM</div>
-       <div style="font-size:10px;color:rgba(253,230,138,.7);margin-top:2px">Emailed — awaiting reply</div>
+       <div style="font-size:10px;color:rgba(253,230,138,.7);margin-top:2px">Replied — AI is handling</div>
      </div>`,
     // COLD
     `<div style="${tileStyle('rgba(59,130,246,.08)','rgba(59,130,246,.25)','0 0 14px rgba(59,130,246,.1)')}cursor:pointer"
@@ -446,10 +446,10 @@ document.getElementById('varStats').innerHTML = varHTML;
 const stages = ['new','contacted','replied','interested','discovery_call','proposal_sent','negotiation','won','lost'];
 const stageLabels = {new:'New',contacted:'Contacted',replied:'Replied',interested:'Interested',
   discovery_call:'Discovery',proposal_sent:'Proposal',negotiation:'Negot.',won:'Won',lost:'Lost'};
-const allLeads = await getLeads(clientId, { qualified: true }).catch(() => []);
+const stageLeads = await getLeads(clientId, { qualified: true }).catch(() => []);
 const stageCounts = {};
 stages.forEach(s => stageCounts[s] = 0);
-allLeads.forEach(l => { if (stageCounts[l.stage] !== undefined) stageCounts[l.stage]++; });
+stageLeads.forEach(l => { if (stageCounts[l.stage] !== undefined) stageCounts[l.stage]++; });
 const maxCount = Math.max(...Object.values(stageCounts), 1);
 
 document.getElementById('stageFunnel').innerHTML = `
@@ -471,7 +471,7 @@ document.getElementById('sub').textContent = `Welcome back. ${runs.length} runs 
 if (brainStats) {
   document.getElementById('statsGrid').innerHTML = [
     statCard('Total Leads Found',   brainStats.total_leads,         'all time', '👥'),
-    statCard('Active Leads',        brainStats.active_leads,        'with email', '✅'),
+    statCard('Active Leads',        brainStats.active_leads,     0  'with email', '✅'),
     statCard('Weekly Reply Rate',   (brainStats.weekly_reply_rate ?? 0).toFixed(1) + '%',
              brainStats.trend === 'improving' ? '↑ improving' : brainStats.trend === 'declining' ? '↓ declining' : 'stable', '💬'),
     statCard("Today's Sends",       brainStats.today_sent,          'of daily cap', '📧'),
@@ -511,18 +511,21 @@ import { supabase as _sb } from '/shared/auth.js';
 _sb.channel('rt-dashboard')
   .on('postgres_changes', { event: '*', schema: 'public', table: 'pipeline_runs',    filter: `client_id=eq.${clientId}` }, scheduleRefresh)
   .on('postgres_changes', { event: '*', schema: 'public', table: 'email_sequences',  filter: `client_id=eq.${clientId}` }, scheduleRefresh)
-  .on('postgres_changes', { event: '*', schema: 'public', table: 'leads',            filter: `client_id=eq.${clientId}` }, scheduleRefresh)
+  .on('postgres_changes', { evenm: '*', schema: 'public', table: 'leads',            filter: `client_id=eq.${clientId}` }, scheduleRefresh)
   .subscribe();
 
-// ── Super Brain Live Feed ─────────────────────────────────────
-(async () => {
+// ── Super Brain Live Feeh *(async () => {
   try {
     // Load latest run's chat messages
     const latestRun = runs[0];
     if (latestRun) {
-      // Fetch latest pipeline_chat for most recent run
-      const { data: chatRows } = await _sb.from('pipeline_chat')
-        .select('*')
+      // Fetch────────────────────────────────
+(async () => {
+  try"
+    // Load latest run's chat messages
+    const latestRun = runs[0];
+    if (latestRun) {
+      // Fetch .select('*')
         .eq('run_id', latestRun.id)
         .order('created_at', { ascending: false })
         .limit(20);
@@ -575,123 +578,4 @@ function appendBrainMsg(row) {
   if (placeholder) placeholder.remove();
 
   const cls = `brain-msg brain-msg-${row.type || 'info'}`;
-  const icon = { info:'ℹ️', success:'✅', warning:'⚠️', insight:'💡', error:'❌' }[row.type] || 'ℹ️';
-  const time = new Date(row.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const div = document.createElement('div');
-  div.className = cls;
-  div.innerHTML = `<span style="font-size:10px;opacity:.5;margin-right:6px">${time}</span>${icon} ${row.message}`;
-  feed.appendChild(div);
-  feed.scrollTop = feed.scrollHeight;
-}
-
-function setBrainActive(msg, isRunning) {
-  const bar = document.getElementById('brain-status-bar');
-  const dot = document.getElementById('brain-dot');
-  const text = document.getElementById('brain-status-text');
-  const pill = document.getElementById('brain-live-pill');
-  if (!bar) return;
-  bar.style.display = 'flex';
-  if (text) text.textContent = msg;
-  if (dot) { dot.className = isRunning ? 'brain-dot' : 'brain-dot idle'; }
-  if (pill && isRunning) {
-    pill.textContent = '● LIVE';
-    pill.style.background = 'rgba(99,102,241,.15)';
-    pill.style.color = '#818cf8';
-    pill.style.borderColor = 'rgba(99,102,241,.3)';
-  }
-}
-
-// Solver errors
-if (runs.length > 0) {
-  const latestRun = runs[0];
-  if (latestRun.errors?.length > 0) {
-    const diagnosed = await diagnoseAll(latestRun.errors, clientId).catch(() => []);
-    const errorHTML = diagnosed.map(renderErrorCard).join('');
-    document.getElementById('alerts').innerHTML += `
-      <div style="margin-bottom:16px">
-        <div style="font-size:13px;font-weight:600;color:var(--color-text-muted);margin-bottom:8px">Last run issues (auto-diagnosis):</div>
-        ${errorHTML}
-      </div>`;
-  }
-}
-
-// ── Follow-up Queue ──────────────────────────────────────────────
-(async () => {
-  try {
-    const { data: scheduled } = await _sb.from('outreach_log')
-      .select('id,subject,body,scheduled_at,follow_up_seq,status,leads(business_name,email,phone)')
-      .eq('client_id', clientId)
-      .eq('status', 'scheduled')
-      .not('scheduled_at', 'is', null)
-      .order('scheduled_at', { ascending: true })
-      .limit(8);
-
-    const el = document.getElementById('followUpQueue');
-    if (!el) return;
-    if (!scheduled || scheduled.length === 0) {
-      el.innerHTML = `<p style="color:var(--color-text-muted);font-size:13px">No scheduled follow-ups yet.<br>Follow-ups are created automatically after each pipeline run.</p>`;
-      return;
-    }
-    const dayLabels = ['—', 'Day 3', 'Day 7', 'Day 14'];
-    const now = Date.now();
-    el.innerHTML = scheduled.map(row => {
-      const dueDate   = new Date(row.scheduled_at);
-      const daysUntil = Math.ceil((dueDate - now) / 86400000);
-      const dueLabel  = daysUntil <= 0 ? '<span style="color:#f87171;font-weight:700">Due now</span>'
-                      : daysUntil === 1 ? '<span style="color:#fcd34d">Tomorrow</span>'
-                      : `<span style="color:#94a3b8">In ${daysUntil}d</span>`;
-      const seqLabel  = dayLabels[row.follow_up_seq] ?? `Seq ${row.follow_up_seq}`;
-      const biz       = row.leads?.business_name ?? 'Unknown';
-      return `<div style="display:flex;justify-content:space-between;align-items:center;
-                          padding:9px 8px;border-bottom:1px solid var(--d-border);
-                          border-radius:6px;gap:8px;transition:background .15s"
-                   onmouseover="this.style.background='rgba(99,102,241,.05)'"
-                   onmouseout="this.style.background=''">
-        <div style="min-width:0">
-          <div style="font-size:13px;font-weight:600;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${biz}</div>
-          <div style="font-size:11px;color:#64748b">${seqLabel} follow-up</div>
-        </div>
-        <div style="text-align:right;flex-shrink:0;font-size:12px">${dueLabel}</div>
-      </div>`;
-    }).join('');
-  } catch (e) {
-    const el = document.getElementById('followUpQueue');
-    if (el) el.innerHTML = `<p style="color:#64748b;font-size:12px">Follow-up table loading…<br>(Run migration 006 if this persists)</p>`;
-  }
-})();
-
-// ── Niche Memory Panel ───────────────────────────────────────────
-(async () => {
-  try {
-    const { data: memories } = await _sb.from('niche_memory')
-      .select('niche,city,state,avg_score,runs_count,notes,pain_signals,updated_at')
-      .eq('client_id', clientId)
-      .order('updated_at', { ascending: false })
-      .limit(5);
-
-    const el = document.getElementById('nicheMemoryPanel');
-    if (!el) return;
-    if (!memories || memories.length === 0) {
-      el.innerHTML = `<p style="color:var(--color-text-muted);font-size:13px">No niche memory yet.<br>After your first pipeline run, Claude will save what it learned here for smarter future runs.</p>`;
-      return;
-    }
-    el.innerHTML = memories.map(m => {
-      const scoreColor = m.avg_score >= 8 ? '#6ee7b7' : m.avg_score >= 6 ? '#fcd34d' : '#f87171';
-      return `<div style="padding:10px 0;border-bottom:1px solid var(--d-border)">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-          <span style="font-size:13px;font-weight:700;color:#f1f5f9">${m.niche} · ${m.city}${m.state ? ', '+m.state : ''}</span>
-          <span style="font-size:11px;font-weight:700;color:${scoreColor}">avg ${m.avg_score}/10</span>
-        </div>
-        <div style="font-size:11px;color:#94a3b8;margin-bottom:4px">${m.runs_count} run${m.runs_count !== 1 ? 's' : ''} · last: ${new Date(m.updated_at).toLocaleDateString()}</div>
-        ${m.notes ? `<div style="font-size:12px;color:#a5b4fc;font-style:italic">"${m.notes}"</div>` : ''}
-        ${m.pain_signals?.length ? `<div style="margin-top:4px">${m.pain_signals.slice(0,2).map(s => `<span style="font-size:10px;background:rgba(99,102,241,.12);color:#818cf8;padding:2px 7px;border-radius:10px;margin-right:4px;display:inline-block">${s}</span>`).join('')}</div>` : ''}
-      </div>`;
-    }).join('');
-  } catch (e) {
-    const el = document.getElementById('nicheMemoryPanel');
-    if (el) el.innerHTML = `<p style="color:#64748b;font-size:12px">Niche memory loading…<br>(Run migration 006 if this persists)</p>`;
-  }
-})();
-</script>
-</body>
-</html>
+  con
