@@ -71,7 +71,7 @@
 
 <script type="module">
 import { adminNav, injectLeadFynTheme } from '/shared/ui.js';
-import { requireAdmin, getClientId } from '/shared/auth.js';
+import { requireAuth, getClientId } from '/shared/auth.js';
 
 const SUPABASE_URL  = 'https://ndwvsrtyjnaddrifafqk.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kd3ZzcnR5am5hZGRyaWZhZnFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4ODMxMDgsImV4cCI6MjA5MzQ1OTEwOH0.7XoOKB74DGiXac3cfSSiyvREuWZ7qbQ2QbxE6d1rnlM';
@@ -87,7 +87,7 @@ injectLeadFynTheme();
 document.getElementById('sidebar').innerHTML = adminNav('calendar');
 document.getElementById('appLayout').style.display = 'grid';
 
-await requireAdmin();
+await requireAuth('admin');
 clientId = await getClientId();
 loadMeetings();
 renderDayPicker();
