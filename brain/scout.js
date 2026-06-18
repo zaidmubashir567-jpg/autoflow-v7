@@ -12,7 +12,7 @@ import { sb } from '../shared/auth.js';
 import { getNicheHistory, getCityHistory } from '../shared/db.js';
 // ↑ getNicheHistory + getCityHistory are now exported from db.js
 
-// ── Top niche+city combos that LeadFyn can auto-suggest ────
+// ── Top niche+city combos that LeadFyn can auto-suggest ─────
 const NICHE_ROTATION = [
   'plumber', 'electrician', 'HVAC', 'roofer', 'landscaper',
   'dentist', 'chiropractor', 'optometrist', 'veterinarian',
@@ -113,7 +113,7 @@ export async function autoRun(clientId, clientSettings = {}) {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return { success: false, error: 'Not authenticated' };
 
-  const supabaseUrl = window.__SUPABASE_URL_;
+  const supabaseUrl = window.__SUPABASE_URL__;
   const res = await fetch(`${supabaseUrl}/functions/v1/run-pipeline`, {
     method: 'POST',
     headers: {
