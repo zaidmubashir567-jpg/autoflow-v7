@@ -1,136 +1,305 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LeadFyn — Booking Calendar</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="modulepreload" href="/shared/ui.js">
-<link rel="modulepreload" href="/shared/auth.js">
-<link rel="modulepreload" href="/shared/db.js">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Bookings — LeadFyn</title>
+  <link rel="preconnect" href="https://ndwvsrtyjnaddrifafqk.supabase.co" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="modulepreload" href="/shared/auth.js">
+  <link rel="modulepreload" href="/shared/ui.js">
+  <link rel="modulepreload" href="/shared/db.js">
+
+  <!-- ── 3D DARK OVERRIDES ── -->
+  <style>
+    :root {
+      --d-bg:      #060614;
+      --d-surface: #0d0d2b;
+      --d-card:    rgba(255,255,255,0.04);
+      --d-border:  rgba(255,255,255,0.09);
+      --d-border2: rgba(99,102,241,0.35);
+      --d-accent:  #6366f1;
+      --d-accent2: #818cf8;
+      --d-glow:    0 0 40px rgba(99,102,241,.18);
+      --d-glow2:   0 0 20px rgba(99,102,241,.10);
+      --d-shadow:  0 8px 32px rgba(0,0,0,.55);
+    }
+    body {
+      background: var(--d-bg) !important;
+      background-image:
+        radial-gradient(ellipse 60% 50% at 20% -10%, rgba(99,102,241,.12), transparent),
+        radial-gradient(ellipse 40% 40% at 80% 90%, rgba(139,92,246,.08), transparent) !important;
+      background-attachment: fixed !important;
+    }
+    :root {
+      --color-bg:         var(--d-bg);
+      --color-surface:    var(--d-surface);
+      --color-border:     var(--d-border);
+      --color-text:       #f1f5f9;
+      --color-text-muted: #94a3b8;
+      --color-accent:     var(--d-accent);
+      --shadow:           0 2px 8px rgba(0,0,0,.4);
+      --shadow-md:        0 8px 32px rgba(0,0,0,.5);
+    }
+    .sidebar {
+      background: rgba(6,6,20,0.95) !important;
+      border-right: 1px solid var(--d-border);
+      backdrop-filter: blur(20px);
+      box-shadow: 4px 0 24px rgba(0,0,0,.4);
+    }
+    .sidebar-brand { border-bottom: 1px solid var(--d-border) !important; }
+    .brand-icon { font-size: 22px; filter: drop-shadow(0 0 8px rgba(99,102,241,.6)); }
+    .nav-item.active {
+      background: rgba(99,102,241,.15) !important;
+      border-left-color: var(--d-accent) !important;
+      box-shadow: inset 0 0 20px rgba(99,102,241,.08);
+    }
+    .nav-item:hover { background: rgba(255,255,255,.05) !important; }
+    .page-title { font-size: 26px !important; font-weight: 900 !important; letter-spacing: -.5px; color: #f1f5f9 !important; }
+    .page-sub   { color: #94a3b8 !important; }
+    .stat-card {
+      background: var(--d-card) !important;
+      border: 1px solid var(--d-border) !important;
+      border-radius: 14px !important;
+      backdrop-filter: blur(16px);
+      box-shadow: var(--d-shadow), inset 0 1px 0 rgba(255,255,255,.07) !important;
+      transition: transform .3s ease, box-shadow .3s ease !important;
+      transform: perspective(600px) rotateX(3deg);
+      position: relative; overflow: hidden;
+    }
+    .stat-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(99,102,241,.5), transparent);
+    }
+    .stat-card:hover {
+      transform: perspective(600px) rotateX(0deg) translateY(-6px) !important;
+      box-shadow: var(--d-shadow), var(--d-glow), inset 0 1px 0 rgba(255,255,255,.12) !important;
+      border-color: var(--d-border2) !important;
+    }
+    .stat-val {
+      font-size: 32px !important; font-weight: 900 !important;
+      background: linear-gradient(135deg, #fff, var(--d-accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .stat-label { color: #94a3b8 !important; font-size:.78rem; margin-top:3px; font-weight:500; }
+    .card {
+      background: var(--d-card) !important;
+      border: 1px solid var(--d-border) !important;
+      border-radius: 14px !important;
+      backdrop-filter: blur(16px);
+      box-shadow: var(--d-shadow), inset 0 1px 0 rgba(255,255,255,.05) !important;
+      transition: box-shadow .3s, border-color .3s !important;
+    }
+    .card:hover { border-color: var(--d-border2) !important; box-shadow: var(--d-shadow), var(--d-glow2) !important; }
+    .card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px; border-bottom: 1px solid var(--d-border);
+    }
+    .card-title {
+      color: #f1f5f9 !important; font-weight: 700 !important; font-size: 14px !important;
+      letter-spacing: .2px;
+    }
+    .meeting-row {
+      padding: 14px 20px; display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; border-bottom: 1px solid rgba(255,255,255,.05);
+      transition: background .15s; cursor: pointer;
+    }
+    .meeting-row:last-child { border-bottom: none; }
+    .meeting-row:hover { background: rgba(99,102,241,.06); }
+    .meeting-avatar {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: rgba(99,102,241,.15); border: 1px solid rgba(99,102,241,.25);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem; flex: none;
+    }
+    .meeting-name { font-weight: 600; font-size: .9rem; color: #f1f5f9; margin-bottom: 2px; }
+    .meeting-meta { font-size: .78rem; color: #94a3b8; }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--d-accent), var(--d-accent2)) !important;
+      color: #fff !important; border: none !important; border-radius: 10px !important;
+      padding: 8px 16px; font-weight: 600; font-size: .85rem; cursor: pointer;
+      box-shadow: 0 4px 12px rgba(99,102,241,.3); transition: opacity .15s, transform .15s;
+    }
+    .btn-primary:hover { opacity: .9; transform: translateY(-1px); }
+    .btn-secondary {
+      background: rgba(255,255,255,.07) !important; color: #94a3b8 !important;
+      border: 1px solid rgba(255,255,255,.1) !important; border-radius: 10px !important;
+      padding: 8px 14px; font-weight: 500; font-size: .85rem; cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,.12) !important; color: #f1f5f9 !important; }
+    .input-sm {
+      background: rgba(255,255,255,.06) !important; border: 1px solid rgba(255,255,255,.12) !important;
+      color: #f1f5f9 !important; border-radius: 8px; padding: 6px 10px; font-size: .83rem;
+      font-family: inherit; outline: none;
+    }
+    .input-sm:focus { border-color: var(--d-accent) !important; box-shadow: 0 0 0 3px rgba(99,102,241,.15) !important; }
+    select.input-sm option { background: #0d0d2b; }
+    .day-btn {
+      padding: 10px 6px; border-radius: 10px; text-align: center; cursor: pointer;
+      font-size: .82rem; font-weight: 500; transition: all .2s; border: 1.5px solid rgba(255,255,255,.1);
+      color: #94a3b8; background: rgba(255,255,255,.04);
+    }
+    .day-btn.active {
+      border-color: var(--d-accent); background: rgba(99,102,241,.15);
+      color: var(--d-accent2); font-weight: 700;
+    }
+    .empty-state {
+      padding: 48px 32px; text-align: center; color: #94a3b8;
+    }
+    .empty-state-icon { font-size: 2.5rem; margin-bottom: 12px; }
+    .empty-state-text { font-size: .9rem; line-height: 1.5; }
+    #af-loader { background: linear-gradient(90deg, var(--d-accent), #a78bfa) !important; }
+  </style>
+  <link rel="stylesheet" href="/shared/leadfyn-theme.css">
 </head>
 <body>
-<div class="bg-orbs"><div class="orb orb1"></div><div class="orb orb2"></div></div>
-<div class="app-layout" id="appLayout" style="display:none">
-  <aside class="sidebar" id="sidebar"></aside>
-  <main class="main-content">
-    <div class="page-header">
+<div id="app">Loading…</div>
+
+<script type="module">
+import { requireAuth, getClientId } from '/shared/auth.js';
+import { adminNav, injectSharedCSS, injectLeadFynTheme, toast } from '/shared/ui.js';
+
+injectLeadFynTheme();
+injectSharedCSS();
+
+const SUPABASE_URL  = 'https://ndwvsrtyjnaddrifafqk.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kd3ZzcnR5am5hZGRyaWZhZnFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4ODMxMDgsImV4cCI6MjA5MzQ1OTEwOH0.7XoOKB74DGiXac3cfSSiyvREuWZ7qbQ2QbxE6d1rnlM';
+
+const days     = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+let clientId   = null;
+let selectedDays = new Set([1, 3, 5]);
+let currentMeetings = [];
+
+try {
+  await requireAuth('admin');
+  clientId = await getClientId();
+} catch(e) {
+  document.getElementById('app').innerHTML = `<div style="padding:40px;color:#f1f5f9">Auth failed. <a href="/index.html" style="color:#818cf8">Sign in</a></div>`;
+}
+
+// ── Render shell ──────────────────────────────────────────────
+document.getElementById('app').innerHTML = `
+  ${adminNav('Bookings')}
+  <main class="main" style="position:relative;z-index:1">
+    <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:24px 32px 20px">
       <div>
-        <h1 class="page-title">📅 Booking Calendar</h1>
-        <p class="page-sub">Meetings booked by INTERESTED leads · Click a meeting to view details</p>
+        <h1 class="page-title">📅 Bookings</h1>
+        <p class="page-sub">Meetings booked by INTERESTED leads · Click a row to view details</p>
       </div>
-      <div style="display:flex;gap:10px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn-primary" onclick="openAvailability()">⚙️ My Availability</button>
         <button class="btn-secondary" onclick="loadMeetings()">↻ Refresh</button>
       </div>
     </div>
 
-    <!-- Stats Row -->
-    <div id="statsRow" class="stats-row" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px"></div>
-
-    <!-- Upcoming meetings -->
-    <div class="card" style="margin-bottom:24px">
-      <div class="card-header">
-        <h2 class="card-title">📌 Upcoming Meetings</h2>
-        <select id="filterStatus" class="input-sm" onchange="loadMeetings()" style="width:160px">
-          <option value="">All meetings</option>
-          <option value="confirmed">Confirmed</option>
-          <option value="pending">Pending</option>
-          <option value="completed">Completed</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
+    <div class="page-body" style="padding:24px 32px">
+      <!-- Stats Row -->
+      <div id="statsRow" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px">
+        ${[...Array(4)].map(()=>`<div class="stat-card" style="padding:20px 24px;text-align:center"><div class="stat-val" style="font-size:2rem">—</div><div class="stat-label">Loading</div></div>`).join('')}
       </div>
-      <div id="meetingsList"><p class="text-muted" style="padding:24px">Loading meetings...</p></div>
+
+      <!-- Meetings list -->
+      <div class="card" style="margin-bottom:24px">
+        <div class="card-header">
+          <h2 class="card-title">📌 Upcoming Meetings</h2>
+          <select id="filterStatus" class="input-sm" onchange="loadMeetings()" style="width:160px">
+            <option value="">All meetings</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="pending">Pending</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+        <div id="meetingsList">
+          <div class="empty-state">
+            <div class="empty-state-icon">⏳</div>
+            <div class="empty-state-text">Loading meetings…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Availability panel (hidden by default) -->
+      <div class="card" id="availabilitySection" style="display:none">
+        <div class="card-header">
+          <h2 class="card-title">⏰ My Weekly Availability</h2>
+          <button class="btn-secondary" onclick="closeAvailability()">✕ Close</button>
+        </div>
+        <div style="padding:20px">
+          <p style="color:#94a3b8;font-size:.88rem;margin-bottom:20px;line-height:1.6">
+            Set the days and times you're available for 30-minute discovery calls.<br>
+            INTERESTED leads will see these slots when they click your booking link.
+          </p>
+          <div id="slotsGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:20px"></div>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+            <input type="time" id="slotStart" value="14:00" class="input-sm" style="width:120px">
+            <span style="color:#94a3b8;font-size:.9rem">to</span>
+            <input type="time" id="slotEnd" value="17:00" class="input-sm" style="width:120px">
+            <button class="btn-primary" onclick="saveAvailability()">💾 Save Availability</button>
+          </div>
+          <p style="color:#64748b;font-size:.78rem">Selected days will be available in the time window above. All times are Chicago (Central) time.</p>
+        </div>
+      </div>
     </div>
+  </main>`;
 
-    <!-- Availability Settings -->
-    <div class="card" id="availabilitySection" style="display:none">
-      <div class="card-header">
-        <h2 class="card-title">⏰ My Weekly Availability</h2>
-        <button class="btn-secondary" onclick="closeAvailability()">✕ Close</button>
-      </div>
-      <p class="text-muted" style="margin-bottom:16px;font-size:.88rem">Set the days and times you're available for 30-minute calls. INTERESTED leads will see these slots when they click the booking link.</p>
-      <div id="slotsGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:20px"></div>
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-        <input type="time" id="slotStart" value="14:00" class="input-sm" style="width:120px">
-        <span class="text-muted">to</span>
-        <input type="time" id="slotEnd" value="17:00" class="input-sm" style="width:120px">
-        <button class="btn-primary" onclick="saveAvailability()">Save Availability</button>
-      </div>
-      <p class="text-muted" style="font-size:.8rem">Selected days will be available in the time window above. All times are Chicago (Central) time.</p>
-    </div>
-  </main>
-</div>
-
-<!-- Meeting Detail Modal -->
-<div id="meetingModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:none;align-items:center;justify-content:center;padding:16px">
-  <div style="background:#fff;border-radius:20px;padding:28px;max-width:480px;width:100%;position:relative" id="meetingModalInner"></div>
-</div>
-
-<script type="module">
-import { adminNav, injectLeadFynTheme } from '/shared/ui.js';
-import { requireAuth, getClientId } from '/shared/auth.js';
-
-const SUPABASE_URL  = 'https://ndwvsrtyjnaddrifafqk.supabase.co';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kd3ZzcnR5am5hZGRyaWZhZnFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4ODMxMDgsImV4cCI6MjA5MzQ1OTEwOH0.7XoOKB74DGiXac3cfSSiyvREuWZ7qbQ2QbxE6d1rnlM';
-const FN_BASE = `${SUPABASE_URL}/functions/v1`;
-
-const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-const daysFull = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-let clientId = null;
-let selectedDays = new Set([1, 3, 5]); // Mon/Wed/Fri default
-let currentMeetings = [];
-
-injectLeadFynTheme();
-document.getElementById('sidebar').innerHTML = adminNav('calendar');
-document.getElementById('appLayout').style.display = 'grid';
-
-await requireAuth('admin');
-clientId = await getClientId();
+// Load data
 loadMeetings();
 renderDayPicker();
 
+// ── Meeting detail modal ───────────────────────────────────
+const modalEl = document.createElement('div');
+modalEl.id = 'meetingModal';
+modalEl.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)';
+document.body.appendChild(modalEl);
+
+// ── Load meetings ──────────────────────────────────────────
 window.loadMeetings = async function() {
   const statusFilter = document.getElementById('filterStatus').value;
   let url = `${SUPABASE_URL}/rest/v1/meetings?client_id=eq.${clientId}&order=booked_at.asc&select=*,leads(business_name,niche,city)`;
-  if (statusFilter) url += `&status=eq.${statusFilter}`;
-  else url += `&status=in.(pending,confirmed)`;
+  url += statusFilter ? `&status=eq.${statusFilter}` : `&status=in.(pending,confirmed)`;
 
-  const res = await fetch(url, {
-    headers: { 'apikey': SUPABASE_ANON, 'Authorization': `Bearer ${SUPABASE_ANON}` }
-  });
-  currentMeetings = await res.json();
+  try {
+    const res = await fetch(url, {
+      headers: { 'apikey': SUPABASE_ANON, 'Authorization': `Bearer ${SUPABASE_ANON}` }
+    });
+    currentMeetings = await res.json();
+  } catch(e) {
+    currentMeetings = [];
+  }
   renderMeetings();
   renderStats();
 };
 
 function renderStats() {
-  const confirmed  = currentMeetings.filter(m => m.status === 'confirmed').length;
-  const pending    = currentMeetings.filter(m => m.status === 'pending').length;
-  const thisWeek   = currentMeetings.filter(m => {
-    const d = new Date(m.booked_at);
-    const now = new Date();
-    const week = new Date(); week.setDate(week.getDate() + 7);
-    return d >= now && d <= week;
-  }).length;
+  const confirmed = currentMeetings.filter(m => m.status === 'confirmed').length;
+  const pending   = currentMeetings.filter(m => m.status === 'pending').length;
+  const now = new Date(), week = new Date(); week.setDate(week.getDate() + 7);
+  const thisWeek  = currentMeetings.filter(m => { const d = new Date(m.booked_at); return d >= now && d <= week; }).length;
+  const total     = currentMeetings.length;
 
-  document.getElementById('statsRow').innerHTML = `
-    <div class="stat-card"><div class="stat-val">${confirmed}</div><div class="stat-label">Confirmed</div></div>
-    <div class="stat-card"><div class="stat-val">${pending}</div><div class="stat-label">Awaiting link</div></div>
-    <div class="stat-card"><div class="stat-val">${thisWeek}</div><div class="stat-label">This week</div></div>
-    <div class="stat-card"><div class="stat-val">${currentMeetings.length}</div><div class="stat-label">Total upcoming</div></div>
-  `;
+  const stats = [
+    { val: confirmed, label: 'Confirmed',     icon: '✅' },
+    { val: pending,   label: 'Awaiting link', icon: '⏳' },
+    { val: thisWeek,  label: 'This week',      icon: '📆' },
+    { val: total,     label: 'Total upcoming', icon: '📊' },
+  ];
+  document.getElementById('statsRow').innerHTML = stats.map(s => `
+    <div class="stat-card" style="padding:20px 24px;text-align:center">
+      <div style="font-size:1.6rem;margin-bottom:4px">${s.icon}</div>
+      <div class="stat-val">${s.val}</div>
+      <div class="stat-label">${s.label}</div>
+    </div>`).join('');
 }
 
 function renderMeetings() {
   const list = document.getElementById('meetingsList');
   if (!currentMeetings.length) {
-    list.innerHTML = `<div style="padding:32px;text-align:center;color:#6e6e73">
-      <div style="font-size:2rem;margin-bottom:8px">📭</div>
-      <p>No meetings yet. When an INTERESTED lead books a call, it appears here.</p>
-    </div>`;
+    list.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">📭</div>
+        <div class="empty-state-text">No meetings yet.<br>When an INTERESTED lead books a call, it appears here.</div>
+      </div>`;
     return;
   }
 
@@ -138,21 +307,27 @@ function renderMeetings() {
     const dateStr = m.booked_at
       ? new Date(m.booked_at).toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true, timeZone:'America/Chicago' })
       : 'Time TBD';
-    const statusColor = { confirmed:'#1a7f1a', pending:'#854f0b', cancelled:'#a32d2d', completed:'#0071e3', no_show:'#6e6e73' }[m.status] ?? '#6e6e73';
     const lead = m.leads ?? {};
+    const sc = { confirmed:'rgba(16,185,129,.2)', pending:'rgba(245,158,11,.2)', cancelled:'rgba(239,68,68,.2)', completed:'rgba(99,102,241,.2)', no_show:'rgba(100,116,139,.2)' };
+    const tc = { confirmed:'#34d399', pending:'#fcd34d', cancelled:'#fca5a5', completed:'#a5b4fc', no_show:'#94a3b8' };
+    const sbg = sc[m.status] ?? sc.no_show;
+    const stc = tc[m.status] ?? tc.no_show;
     return `
-      <div class="table-row" onclick="openMeeting('${m.id}')" style="cursor:pointer;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid rgba(0,0,0,.06)">
+      <div class="meeting-row" onclick="openMeeting('${m.id}')">
         <div style="display:flex;align-items:center;gap:14px;flex:1;min-width:0">
-          <div style="width:40px;height:40px;border-radius:50%;background:#f0f7ff;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex:none">📅</div>
+          <div class="meeting-avatar">📅</div>
           <div style="min-width:0">
-            <div style="font-weight:600;font-size:.9rem;margin-bottom:2px">${m.visitor_name ?? 'Unnamed visitor'}</div>
-            <div style="font-size:.8rem;color:#6e6e73">${lead.business_name ?? '—'} · ${lead.city ?? ''} · ${dateStr}</div>
+            <div class="meeting-name">${m.visitor_name ?? 'Unnamed visitor'}</div>
+            <div class="meeting-meta">${lead.business_name ?? '—'} · ${lead.city ?? ''} · ${dateStr}</div>
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex:none">
-          ${m.visitor_phone ? `<span style="font-size:.8rem;color:#6e6e73">${m.visitor_phone}</span>` : ''}
-          <span style="font-size:.75rem;font-weight:600;padding:3px 10px;border-radius:980px;background:${statusColor}22;color:${statusColor}">${m.status}</span>
-          <button onclick="event.stopPropagation();copyBookingLink('${m.booking_token}')" style="font-size:.75rem;padding:4px 10px;border-radius:8px;border:1px solid rgba(0,0,0,.1);background:#fff;cursor:pointer;color:#0071e3">📋 Link</button>
+          ${m.visitor_phone ? `<span style="font-size:.78rem;color:#94a3b8">${m.visitor_phone}</span>` : ''}
+          <span style="font-size:.73rem;font-weight:700;padding:3px 10px;border-radius:980px;background:${sbg};color:${stc}">${m.status}</span>
+          <button onclick="event.stopPropagation();copyBookingLink('${m.booking_token}')"
+            style="font-size:.75rem;padding:5px 11px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);cursor:pointer;color:#a5b4fc;font-weight:500">
+            📋 Link
+          </button>
         </div>
       </div>`;
   }).join('');
@@ -165,31 +340,31 @@ window.openMeeting = function(id) {
   const dateStr = m.booked_at
     ? new Date(m.booked_at).toLocaleString('en-US', { weekday:'long', month:'long', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true, timeZone:'America/Chicago' })
     : 'Time not set';
-  const modal = document.getElementById('meetingModal');
-  document.getElementById('meetingModalInner').innerHTML = `
-    <button onclick="closeMeetingModal()" style="position:absolute;top:16px;right:16px;border:none;background:none;font-size:1.2rem;cursor:pointer;color:#6e6e73">✕</button>
-    <h2 style="font-size:1.2rem;font-weight:700;margin-bottom:4px">${m.visitor_name ?? 'Meeting details'}</h2>
-    <p style="color:#6e6e73;font-size:.85rem;margin-bottom:20px">${lead.business_name ?? ''} · ${lead.niche ?? ''}</p>
-    <div style="display:flex;flex-direction:column;gap:10px;font-size:.88rem">
-      <div style="display:flex;gap:8px"><span>📅</span><span><strong>When:</strong> ${dateStr}</span></div>
-      ${m.visitor_email ? `<div style="display:flex;gap:8px"><span>📧</span><span>${m.visitor_email}</span></div>` : ''}
-      ${m.visitor_phone ? `<div style="display:flex;gap:8px"><span>📞</span><span>${m.visitor_phone}</span></div>` : ''}
-      ${m.company_name  ? `<div style="display:flex;gap:8px"><span>🏢</span><span>${m.company_name}</span></div>` : ''}
-      <div style="display:flex;gap:8px"><span>🔗</span><span style="word-break:break-all;color:#0071e3;font-size:.8rem">https://autoflow-v7.vercel.app/book.html?t=${m.booking_token}</span></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:20px">
-      <button onclick="markComplete('${m.id}')" style="flex:1;padding:10px;border-radius:10px;border:none;background:#1a7f1a;color:#fff;font-weight:600;cursor:pointer">✓ Mark Done</button>
-      <button onclick="cancelMeeting('${m.id}')" style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(0,0,0,.12);background:#fff;color:#a32d2d;font-weight:600;cursor:pointer">✕ Cancel</button>
-    </div>
-  `;
-  modal.style.display = 'flex';
+  modalEl.innerHTML = `
+    <div style="background:#0d0d2b;border:1px solid rgba(99,102,241,.3);border-radius:20px;padding:28px;max-width:480px;width:100%;position:relative;box-shadow:0 24px 80px rgba(0,0,0,.7)">
+      <button onclick="closeMeetingModal()" style="position:absolute;top:16px;right:16px;border:none;background:rgba(255,255,255,.08);width:28px;height:28px;border-radius:50%;font-size:1rem;cursor:pointer;color:#94a3b8;display:flex;align-items:center;justify-content:center">✕</button>
+      <h2 style="font-size:1.2rem;font-weight:800;color:#f1f5f9;margin-bottom:4px">${m.visitor_name ?? 'Meeting details'}</h2>
+      <p style="color:#94a3b8;font-size:.85rem;margin-bottom:20px">${lead.business_name ?? ''} · ${lead.niche ?? ''}</p>
+      <div style="display:flex;flex-direction:column;gap:12px;font-size:.88rem;color:#cbd5e1">
+        <div style="display:flex;gap:10px;align-items:flex-start"><span>📅</span><span><strong style="color:#f1f5f9">When:</strong> ${dateStr}</span></div>
+        ${m.visitor_email ? `<div style="display:flex;gap:10px"><span>📧</span><span>${m.visitor_email}</span></div>` : ''}
+        ${m.visitor_phone ? `<div style="display:flex;gap:10px"><span>📞</span><span>${m.visitor_phone}</span></div>` : ''}
+        ${m.company_name  ? `<div style="display:flex;gap:10px"><span>🏢</span><span>${m.company_name}</span></div>` : ''}
+        <div style="display:flex;gap:10px;align-items:flex-start"><span>🔗</span><span style="word-break:break-all;color:#818cf8;font-size:.8rem">https://autoflow-v7.vercel.app/book.html?t=${m.booking_token}</span></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:24px">
+        <button onclick="markComplete('${m.id}')" style="flex:1;padding:10px;border-radius:10px;border:none;background:linear-gradient(135deg,#10b981,#059669);color:#fff;font-weight:700;cursor:pointer;font-size:.9rem">✓ Mark Done</button>
+        <button onclick="cancelMeeting('${m.id}')" style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(239,68,68,.3);background:rgba(239,68,68,.1);color:#fca5a5;font-weight:700;cursor:pointer;font-size:.9rem">✕ Cancel</button>
+      </div>
+    </div>`;
+  modalEl.style.display = 'flex';
 };
 
-window.closeMeetingModal = () => document.getElementById('meetingModal').style.display = 'none';
+window.closeMeetingModal = () => { modalEl.style.display = 'none'; };
 
 window.copyBookingLink = function(tok) {
   navigator.clipboard?.writeText(`https://autoflow-v7.vercel.app/book.html?t=${tok}`);
-  alert('Booking link copied!');
+  toast('Booking link copied!', 'success');
 };
 
 window.markComplete = async function(id) {
@@ -200,6 +375,7 @@ window.markComplete = async function(id) {
   });
   closeMeetingModal();
   loadMeetings();
+  toast('Meeting marked as complete', 'success');
 };
 
 window.cancelMeeting = async function(id) {
@@ -211,14 +387,14 @@ window.cancelMeeting = async function(id) {
   });
   closeMeetingModal();
   loadMeetings();
+  toast('Meeting cancelled', 'warning');
 };
 
-// ── Availability ──────────────────────────────────────────
+// ── Availability ──────────────────────────────────────────────
 function renderDayPicker() {
   document.getElementById('slotsGrid').innerHTML = days.map((d, i) => `
-    <div onclick="toggleDay(${i})" id="day${i}" style="padding:10px 6px;border-radius:10px;border:1.5px solid ${selectedDays.has(i) ? '#0071e3' : 'rgba(0,0,0,.1)'};background:${selectedDays.has(i) ? '#f0f7ff' : '#fff'};text-align:center;cursor:pointer;font-size:.82rem;font-weight:${selectedDays.has(i) ? '700' : '500'};color:${selectedDays.has(i) ? '#0071e3' : '#1d1d1f'}">
-      ${d}
-    </div>`).join('');
+    <div onclick="toggleDay(${i})" id="day${i}" class="day-btn${selectedDays.has(i) ? ' active' : ''}">${d}</div>
+  `).join('');
 }
 
 window.toggleDay = function(i) {
@@ -227,8 +403,9 @@ window.toggleDay = function(i) {
 };
 
 window.openAvailability = function() {
-  document.getElementById('availabilitySection').style.display = 'block';
-  document.getElementById('availabilitySection').scrollIntoView({ behavior: 'smooth' });
+  const section = document.getElementById('availabilitySection');
+  section.style.display = 'block';
+  section.scrollIntoView({ behavior: 'smooth' });
 };
 
 window.closeAvailability = function() {
@@ -238,15 +415,13 @@ window.closeAvailability = function() {
 window.saveAvailability = async function() {
   const start = document.getElementById('slotStart').value;
   const end   = document.getElementById('slotEnd').value;
-  if (!start || !end || !clientId) return alert('Missing fields');
+  if (!start || !end || !clientId) return toast('Missing fields', 'error');
 
-  // Delete existing
   await fetch(`${SUPABASE_URL}/rest/v1/availability_slots?client_id=eq.${clientId}`, {
     method: 'DELETE',
     headers: { 'apikey': SUPABASE_ANON, 'Authorization': `Bearer ${SUPABASE_ANON}`, 'Prefer': 'return=minimal' }
   });
 
-  // Insert new
   const rows = [...selectedDays].map(d => ({
     client_id: clientId, day_of_week: d, start_time: start, end_time: end,
     timezone: 'America/Chicago', duration_min: 30, active: true
@@ -260,16 +435,9 @@ window.saveAvailability = async function() {
     });
   }
 
-  alert(`✅ Availability saved! ${rows.length} days set: ${[...selectedDays].map(d => days[d]).join(', ')} · ${start}–${end} Central`);
+  toast(`✅ Availability saved! ${rows.length} days: ${[...selectedDays].map(d => days[d]).join(', ')} · ${start}–${end} CT`, 'success');
   closeAvailability();
 };
 </script>
-
-<style>
-.stat-card{background:#fff;border-radius:12px;padding:16px 20px;border:1px solid rgba(0,0,0,.07);text-align:center}
-.stat-val{font-size:2rem;font-weight:800;letter-spacing:-1px;color:#1d1d1f}
-.stat-label{font-size:.78rem;color:#6e6e73;margin-top:3px;font-weight:500}
-.input-sm{border:1.5px solid rgba(0,0,0,.12);border-radius:8px;padding:6px 10px;font-size:.83rem;outline:none;font-family:inherit;color:#1d1d1f}
-</style>
 </body>
 </html>
