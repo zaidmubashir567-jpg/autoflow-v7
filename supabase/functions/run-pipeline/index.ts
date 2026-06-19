@@ -166,9 +166,10 @@ const NICHE_PAIN_POINTS: Record<string, string> = {
 
 const BORROWED_PROOF = `Businesses like theirs in markets like Austin, Miami, and Denver are booking 8–15 new customer enquiries per month using this exact system — without paying for Google Ads or depending on referrals alone.`;
 
-const PRICING_TIERS = `STARTER $800/mo — Email outreach + lead scoring + follow-up sequences
-GROWTH $1,500/mo — Starter + AI Receptionist chatbot + monthly results report
-PRO $2,500/mo — Growth + website + unlimited city pipelines + priority support`;
+const PRICING_TIERS = `STARTER $800/mo — Email outreach + lead scoring + follow-up sequences + real business website built for them
+GROWTH $1,500/mo — Starter + AI Receptionist chatbot + monthly results report + real business website
+PRO $2,500/mo — Growth + real business website + unlimited city pipelines + priority support
+NOTE: Every paying client on any plan gets a real website built for their business. The demo link in the outreach email is a free preview only — it is NOT their website. Their real website is delivered after they sign up.`;
 
 // ── Follow-up email templates (Phase 3) ──────────────────────────
 function makeFollowUpEmails(businessName: string, ownerName: string | null, niche: string, city: string): Array<{seq: number; days: number; subject: string; body: string}> {
@@ -702,7 +703,9 @@ email_body MUST follow this exact structure:
 
   [AUDIT BLOCK — auto-generated from audit_data]
 
-  [DEMO WEBSITE LINE: "We built you a free demo: [their-name]-demo.vercel.app — takes 30 seconds to look at."]
+  [DEMO WEBSITE LINE — always include this, every email, no exceptions:
+  "I put together a free demo of what your website could look like: [their-business-name-lowercase]-demo.vercel.app — takes 30 seconds to look at. No strings attached."
+  This is a free preview to show them what's possible. If they sign up on any plan, they get a full real website built for their business — not this demo.]
 
   [AI RECEPTIONIST OFFER — always include this short section:]
   "We can also add an AI receptionist to your website — it answers every visitor question 24/7, captures their name and number, and emails it to you instantly. Most [niche] owners say it pays for itself in the first week."
