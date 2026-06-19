@@ -102,7 +102,7 @@ async function processClientReplies(
 
       // Get lead info
       const { data: lead } = await sb.from('leads').select('*')
-        .eq('id', outreachRow.lead_id	.single();
+        .eq('id', outreachRow.lead_id).single();
       if (!lead) continue;
 
       // Mark as read immediately
@@ -169,7 +169,7 @@ async function processClientReplies(
         lead_id: outreachRow.lead_id,
         outreach_log_id: outreachRow.id,
         gmail_message_id: msg.id,
-        thread_id: m3g.threadId,
+        thread_id: msg.threadId,
         reply_text: replyText,
         classification: category,
         ai_draft: aiDraft,
@@ -197,10 +197,10 @@ async function processClientReplies(
           .eq('id', outreachRow.lead_id);
       }
 
-      // ── NOT_INTERESTED: mark d/_not_contact if definitive ────
+      // ── NOT_INTERESTED: mark do_not_contact if definitive ────
       if (category === 'NOT_INTERESTED') {
         const definitive = lower.includes('not interested') || lower.includes('no thank') ||
-          lower.includes('don\'t contact') || lo7er.includes('do not contact');
+          lower.includes('don\'t contact') || lower.includes('do not contact');
         if (definitive) {
           await sb.from('leads').update({ do_not_contact: true }).eq('id', outreachRow.lead_id);
         }
@@ -218,7 +218,7 @@ async function processClientReplies(
 }
 
 // ── Auto-send reply via Gmail ────────────────────────────────
-async function sendFmailReply(
+async function sendGmailReply(
   oauthToken: string,
   threadId: string,
   replyToMessageId: string,
@@ -302,4 +302,210 @@ Reply with ONLY the category name. Nothing else.`;
 function inferCategory(text: string): Category {
   const lower = text.toLowerCase();
   if (lower.includes('unsubscribe') || lower.trim() === 'stop' || lower.includes('remove')) return 'UNSUBSCRIBE';
-  if 
+  if (lower.includes('out of office') || lower.includes('away') || lower.includes('vacation')) return 'OUT_OF_OFFICE';
+  if (lower.includes('not interested') || lower.includes('no thank') || lower.includes('already have')) return 'NOT_INTERESTED';
+  if (lower.includes('how much') || lower.includes('price') || lower.includes('cost') || lower.includes('interested')) return 'INTERESTED';
+  if (lower.includes('busy') || lower.includes('budget') || lower.includes('think about')) return 'OBJECTION';
+  if (lower.includes('?')) return 'QUESTION';
+  return 'QUESTION';
+}
+
+// ── Generate Claude draft ────────────────────────────────────
+async function generateDraft(
+  client: Record<string, unknown>,
+  lead: Record<string, unknown>,
+  replyText: string,
+  category: Category,
+  outreach: Record<string, unknown>
+): Promise<string> {
+  if (!client.claude_key || category === 'OUT_OF_OFFICE') return '';
+
+  // ── Detect objection subtype for targeted script ─────────────
+  const replyLower = replyText.toLowerCase();
+  const objSubtype =
+    (replyLower.includes('expensive') || replyLower.includes('too much') || replyLower.includes('cost') || replyLower.includes('budget') || replyLower.includes('price'))
+      ? 'price'
+    : (replyLower.includes('already have') || replyLower.includes('working with') || replyLower.includes('have someone') || replyLower.includes('have a person') || replyLower.includes('have a guy') || replyLower.includes('have an agency'))
+      ? 'have_someone'
+    : (replyLower.includes('tried') || replyLower.includes("didn't work") || replyLower.includes('does not work') || replyLower.includes('not for us') || replyLower.includes('waste'))
+      ? 'tried_before'
+    : (replyLower.includes('not now') || replyLower.includes('call me back') || replyLower.includes('later') || replyLower.includes('months') || replyLower.includes('next year') || replyLower.includes('busy'))
+      ? 'timing'
+    : 'generic';
+
+  const OBJECTION_SCRIPTS: Record<string, string> = {
+    price:        `Their objection is about cost/price. Use this script (adapt to feel natural, not copy-pasted): "Totally understand — let me ask: what does one new customer typically bring you in revenue over a year? Most businesses find that getting just 2–3 new customers per month covers the entire cost of this. The real question is whether the maths work for you — want me to walk through it quickly?" Under 70 words. Sign off "Best, Zaid".`,
+    have_someone: `Their objection is that they already have someone doing marketing. Use this script: "That's great — how many qualified appointments are they booking you per month right now? I'm not here to replace anything that's working. But if there's a gap in your pipeline, I can fill it without disrupting what you already have. Happy to show you what we'd add — no commitment." Under 75 words. Sign off "Best, Zaid".`,
+    tried_before: `Their objection is that they tried something like this before and it didn't work. Use this script: "I hear that a lot — and usually it came down to one of three things: wrong targeting, generic copy, or no follow-up system. What specifically didn't work? I can tell you in 30 seconds whether what we do is different — or save us both the time." Under 70 words. Sign off "Best, Zaid".`,
+    timing:       `Their objection is bad timing — too busy, not now, call back later. Use this script: "Completely fair — can I ask, is it the timing, or is getting new customers just not a priority right now? I ask because I have clients who said the same thing and are now booking 10+ calls a month. I'll follow up in 6 weeks — does that work, or is there a better time?" Under 75 words. Sign off "Best, Zaid".`,
+    generic:      `Acknowledge their concern in one genuine sentence — don't repeat their objection back to them. Reframe with one specific benefit for a ${(lead as Record<string,unknown>).niche as string} business. Offer a no-commitment 10-minute conversation. Keep it conversational, not salesy. Under 80 words. Sign off "Best, Zaid".`,
+  };
+
+  const instructions: Record<Category, string> = {
+    INTERESTED: `Write a warm, professional reply confirming their interest. Suggest 2 specific time slots this week for a 15-minute call. Sign off "Best, Zaid". Under 80 words. Do NOT over-sell — they're already interested.`,
+    QUESTION: `Answer their question directly and specifically. Keep it under 100 words. End by offering a quick 15-minute call to cover anything else. Sign off "Best, Zaid".`,
+    OBJECTION: OBJECTION_SCRIPTS[objSubtype],
+    NOT_INTERESTED: `Send a gracious, professional one-sentence reply thanking them for their time and leaving the door open if they ever need us. Under 25 words. No pitch at all. Sign off "Best, Zaid".`,
+    OUT_OF_OFFICE: ``,
+    UNSUBSCRIBE: `Confirm they've been removed. One sentence. Under 15 words. No pitch.`
+  };
+
+  const prompt = `You are handling email replies for a web presence agency on behalf of the business owner.
+
+You just received this reply from ${lead.business_name as string} (${lead.niche as string} in ${lead.city as string}):
+"${replyText.slice(0, 400)}"
+
+Classification: ${category}
+
+Your task: ${instructions[category]}
+
+Return ONLY the email body text. No subject line. No "Dear" — just start the message body.`;
+
+  try {
+    return await callAIQuality(prompt, 'Write a concise, professional email reply.', client as Record<string, string>);
+  } catch {
+    return '';
+  }
+}
+
+// ── Handle INTERESTED — create meeting + send booking link ───
+async function handleInterested(
+  sb: ReturnType<typeof import('../_shared/helpers.ts').getAdminClient>,
+  clientId: string,
+  leadId: string,
+  lead: Record<string, unknown>,
+  client: Record<string, unknown>,
+  oauthToken: string,
+  threadId: string,
+  messageId: string,
+  senderEmail: string,
+  originalSubject: string
+): Promise<{ draft: string; token: string | null }> {
+  try {
+    // Create a pending meeting record for this lead
+    const { data: meeting } = await sb.from('meetings').insert({
+      client_id:    clientId,
+      lead_id:      leadId,
+      visitor_name: (lead.contact_name ?? lead.business_name) as string,
+      visitor_email: senderEmail,
+      status:       'pending',
+      created_at:   new Date().toISOString()
+    }).select('booking_token').single();
+
+    const token = meeting?.booking_token as string | undefined;
+    const bookingUrl = token
+      ? `https://autoflow-v7.vercel.app/book.html?t=${token}`
+      : 'https://autoflow-v7.vercel.app/#contact';
+
+    const bizName = lead.business_name as string ?? 'your business';
+    const niche   = lead.niche as string ?? 'business';
+
+    // Generate personalised warm reply with booking link
+    let draft = '';
+    if (client.claude_key) {
+      const prompt = `Write a warm, professional reply to a ${niche} owner (${bizName}) who just replied saying they're interested in our website/lead-gen service.
+
+Their reply was a positive response to our cold outreach email.
+
+Task: Write a short, friendly email (under 100 words) that:
+1. Thanks them for their interest — one sentence, genuine
+2. Says: "I've set up a quick booking link so you can pick a time that suits you — just click here: ${bookingUrl}"
+3. Says you're looking forward to the call
+4. Sign off with "Best, Zaid" (keep [YOUR NAME] placeholder as written)
+
+Return ONLY the email body. No subject line.`;
+      draft = await callAI(prompt, 'Write a concise, warm email reply.', client as Record<string, string>, 'quality').catch(() => '');
+    }
+
+    // Fallback draft if Claude not available
+    if (!draft) {
+      draft = `Thanks so much for getting back to me — really excited to hear you're interested!\n\nI've set up a quick booking link so you can pick a time that suits you best:\n${bookingUrl}\n\nLooks forward to speaking with you!\n\nBest, Zaid`;
+    }
+
+    // Auto-send the booking link email
+    if (oauthToken) {
+      await sendGmailReply(oauthToken, threadId, messageId, senderEmail, originalSubject, draft);
+    }
+
+    // Update lead stage to call_booked_pending
+    await sb.from('leads').update({ stage: 'interested' }).eq('id', leadId);
+
+    return { draft, token: token ?? null };
+  } catch (e) {
+    console.error('[handleInterested]', (e as Error).message);
+    return { draft: '', token: null };
+  }
+}
+
+// ── Handle UNSUBSCRIBE fast-path ─────────────────────────────
+async function handleUnsubscribe(
+  sb: ReturnType<typeof import('../_shared/helpers.ts').getAdminClient>,
+  clientId: string,
+  leadId: string,
+  messageId: string,
+  threadId: string,
+  replyText: string,
+  lead: Record<string, unknown>,
+  oauthToken: string,
+  senderEmail: string,
+  originalSubject: string
+) {
+  await sb.from('leads').update({ do_not_contact: true, stage: 'lost' }).eq('id', leadId);
+
+  const confirmationMsg = `Hi,\n\nYou've been removed from our list. You won't hear from us again.\n\nBest of luck with your business.`;
+
+  // Auto-send confirmation — no human review needed
+  let status = 'auto_sent';
+  const sent = await sendGmailReply(oauthToken, threadId, messageId, senderEmail, originalSubject, confirmationMsg);
+  if (!sent) status = 'pending_review';
+
+  await sb.from('draft_responses').insert({
+    client_id: clientId,
+    lead_id: leadId,
+    gmail_message_id: messageId,
+    thread_id: threadId,
+    reply_text: replyText,
+    classification: 'UNSUBSCRIBE',
+    ai_draft: confirmationMsg,
+    status,
+    received_at: new Date().toISOString()
+  });
+
+  await sb.from('outreach_log')
+    .update({ replied: true, reply_classification: 'UNSUBSCRIBE' })
+    .eq('client_id', clientId)
+    .eq('lead_id', leadId);
+}
+
+// ── Gmail body extraction ────────────────────────────────────
+function extractEmailBody(msgData: Record<string, unknown>): string {
+  const payload = msgData.payload as Record<string, unknown>;
+  if (!payload) return '';
+  const text = findPart(payload, 'text/plain');
+  if (text) return decodeBase64(text);
+  const html = findPart(payload, 'text/html');
+  if (html) return decodeBase64(html).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const body = payload.body as Record<string, unknown>;
+  if (body?.data) return decodeBase64(body.data as string);
+  return '';
+}
+
+function findPart(payload: Record<string, unknown>, mimeType: string): string | null {
+  const body = payload.body as Record<string, unknown>;
+  if (payload.mimeType === mimeType && body?.data) return body.data as string;
+  const parts = (payload.parts as Array<Record<string, unknown>>) ?? [];
+  for (const part of parts) {
+    const result = findPart(part, mimeType);
+    if (result) return result;
+  }
+  return null;
+}
+
+function decodeBase64(encoded: string): string {
+  try {
+    return decodeURIComponent(escape(atob(encoded.replace(/-/g, '+').replace(/_/g, '/'))));
+  } catch {
+    try { return atob(encoded.replace(/-/g, '+').replace(/_/g, '/')); }
+    catch { return ''; }
+  }
+}
