@@ -145,6 +145,31 @@ const TOOLS = [
   }
 ];
 
+// ── Niche pain point hooks (Phase 6 — Competitive Intel Upgrade) ──
+const NICHE_PAIN_POINTS: Record<string, string> = {
+  'hvac':         `HVAC owners are bleeding money on Google Ads ($187/avg per lead) and losing jobs in the off-season. They need a predictable pipeline year-round — not feast/famine. Open by referencing their dead-season problem or that their competitors outrank them and get the emergency calls first.`,
+  'roofer':       `Roofers have the highest CAC of any home service. They rely on storm-chasing and word of mouth with no pipeline. Their competitors are getting post-storm calls first because they rank higher. Open by referencing the calls going to competitors when homeowners search after a storm.`,
+  'dentist':      `Dentists are losing new patients to corporate dental chains and urgent care clinics. Cancelled appointments are pure lost revenue with no system to fill them. Open by referencing empty appointment slots or the corporate chains moving into their area.`,
+  'plumber':      `Plumbers are buying shared leads from HomeAdvisor/Angi and competing on price against 5 other plumbers for the same job. The first to respond wins. Open by referencing that they're losing jobs to competitors who respond in minutes, not hours.`,
+  'landscaper':   `Landscapers have extreme seasonal fluctuations — dead in winter, overwhelmed in spring. They lose recurring contracts to competitors with better online presence. Open by referencing building a steady year-round pipeline instead of feast/famine.`,
+  'electrician':  `Electricians get 80% of their search traffic from the top 3 Google results. Most don't appear there. Open by referencing where they currently rank vs their top local competitor when homeowners search "electrician [city]".`,
+  'chiropractor': `Chiropractors are competing with larger medical groups and urgent care chains. New patients search online and pick whoever has 50+ reviews. Open by referencing their review count gap vs the nearest competitor.`,
+  'restaurant':   `Restaurants pay delivery platforms 25–30% of every order — effectively paying to access their own customers. Open by referencing that they're funding DoorDash's growth while losing margin on every delivery order.`,
+  'hair salon':   `Salons depend on walk-ins and word of mouth with no system to re-activate past clients or fill slow mid-week slots. Open by referencing the empty Tuesday/Wednesday appointment book problem.`,
+  'real estate':  `Real estate agents pay $300+/lead from Zillow but those leads go to 5+ agents simultaneously. Open by referencing that they're competing with multiple agents for the same lead they just paid $300 for.`,
+  'auto repair':  `Auto repair shops are vulnerable to one negative Google review wiping out 10 word-of-mouth referrals. They have no system to collect reviews from happy customers proactively. Open by referencing their review count vs a competitor.`,
+  'pest control': `Pest control companies lose recurring contracts to national chains (Terminix, Orkin) purely on online visibility — not service quality. Open by referencing the visibility gap vs the national brand that now ranks above them locally.`,
+  'cleaning':     `Cleaning services compete purely on price in a crowded market — unless they have social proof and a professional online presence. Open by referencing that premium clients are choosing a competitor with fewer years of experience but a better-looking profile.`,
+  'attorney':     `Attorneys and law firms lose potential clients in the first 10 seconds online — to competitors with more reviews, cleaner websites, and faster response times. Open by referencing their review gap or slow website response vs competitors in the same practice area.`,
+  'therapist':    `Therapists rely entirely on referrals and Psychology Today profiles. New clients searching online almost never find private practices. Open by referencing how many potential clients in their city can't find them because they don't show up in search.`,
+};
+
+const BORROWED_PROOF = `Businesses like theirs in markets like Austin, Miami, and Denver are booking 8–15 new customer enquiries per month using this exact system — without paying for Google Ads or depending on referrals alone.`;
+
+const PRICING_TIERS = `STARTER $800/mo — Email outreach + lead scoring + follow-up sequences
+GROWTH $1,500/mo — Starter + AI Receptionist chatbot + monthly results report
+PRO $2,500/mo — Growth + website + unlimited city pipelines + priority support`;
+
 // ── Follow-up email templates (Phase 3) ──────────────────────────
 function makeFollowUpEmails(businessName: string, ownerName: string | null, niche: string, city: string): Array<{seq: number; days: number; subject: string; body: string}> {
   const name = ownerName ? ` ${ownerName}` : "";
@@ -177,7 +202,7 @@ function buildAuditBlock(auditData: Record<string,unknown>, businessName: string
   const wy  = auditData.website_year    as number | undefined;
   const tf  = auditData.top_fix         as string | undefined;
 
-  let block = `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📊 QUICK AUDIT — ${businessName}\n`;
+  let block = `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📊 QUICK AUDIT — ${businessName}\n`;
   if (rc != null) block += `⭐ Reviews: ${rc}${rr ? ` (${rr}/5)` : ""}`;
   if (cn && cr != null) block += ` vs. ${cn}: ${cr} reviews — you're losing ~${Math.round((cr - (rc ?? 0)) * 0.04)} clients/month to them`;
   block += "\n";
@@ -187,7 +212,7 @@ function buildAuditBlock(auditData: Record<string,unknown>, businessName: string
   block += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
   block += `\n🤖 AI RECEPTIONIST — included in our packages\n`;
   block += `Answers every visitor 24/7, captures their name + phone, emails you instantly.\n`;
-  block += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  block += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
   return block;
 }
 
@@ -225,6 +250,13 @@ serve(async (req) => {
       .ilike("niche", niche)
       .ilike("city", city)
       .single();
+
+    // ── Resolve niche pain hook from competitive intel ─────────
+    const nicheLower = niche.toLowerCase();
+    const painKey = Object.keys(NICHE_PAIN_POINTS).find(k => nicheLower.includes(k)) ?? null;
+    const nichePainHook = painKey
+      ? NICHE_PAIN_POINTS[painKey]
+      : `Focus your opening on the gap between their current online presence and their top local competitor. Reference real numbers you find (review count, social platforms missing, website age).`;
 
     let nicheMemoryBlock = "";
     if (nicheMemory?.notes) {
@@ -603,7 +635,7 @@ Use this intel from the first search — start with the query patterns that work
 
 MISSION: Find 15-20 high-quality ${niche} businesses in ${city}, ${state}. Build complete outreach packages. You ARE the pipeline — Claude API is the ONLY requirement.${nicheMemoryBlock}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PROCESS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -649,9 +681,23 @@ audit_data REQUIRED — fill in everything you found:
   social_missing (e.g. "No Instagram, Facebook last active 2020"),
   website_year (estimate), top_fix (single best improvement)
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 NICHE INTELLIGENCE FOR THIS RUN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+NICHE PAIN HOOK — use this angle in your opening line:
+${nichePainHook}
+
+SOCIAL PROOF — weave one of these naturally into the email body:
+"${BORROWED_PROOF}"
+
+PRICING TIERS (only mention if they ask, otherwise never put price in email):
+${PRICING_TIERS}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 email_body MUST follow this exact structure:
-  [opening line naming their SPECIFIC pain — their actual review count, missing platform, old site year]
+  [opening line — use the NICHE PAIN HOOK above + their SPECIFIC data you found (review count, missing platform, old site year). Sound like you know their world, not like a template]
   [one comparison: "While [CompetitorName] has [X] reviews, you have [Y] — that's roughly [Z] clients/month going to them"]
+  [SOCIAL PROOF sentence — insert naturally, one line only]
   [one sentence: what we fix + how fast]
 
   [AUDIT BLOCK — auto-generated from audit_data]
@@ -666,7 +712,9 @@ email_body MUST follow this exact structure:
 • Under 220 words total
 • No "hope this finds you well"
 • No generic openers
+• No price in the email — ever
 • The AI receptionist mention should feel natural — 2 sentences only, specific to their niche
+• The social proof should sound casual: "We've seen this work for [niche] businesses in cities like [city]..."
 
 After saving each lead:
 → update_progress({node: "Scheduling", message: "Scheduling follow-up sequences…"})
@@ -682,7 +730,7 @@ COMMUNICATION — send_message throughout the run:
 • "warning" — issue encountered
 • "insight" — strategic finding about this niche (e.g. "Most ${niche} in ${city} have <25 reviews — huge opportunity")
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 FINISH — after all leads saved:
 1. update_progress({node: "Learning", message: "Saving niche intelligence…"})
 2. save_niche_insights — log what you learned:
@@ -694,7 +742,7 @@ FINISH — after all leads saved:
 3. send_message with FULL SUMMARY:
    Total candidates found → qualified → channels breakdown → top 3 leads with their specific gaps
 
-4. update_progress({node: "paused_approval", message: "✅ Hll done — ready for uour review"})
+4. update_progress({node: "paused_approval", message: "✅ All done — ready for your review"})
 
 Never invent contact info or review counts. Only save what you actually found.`;
 
@@ -702,7 +750,7 @@ Never invent contact info or review counts. Only save what you actually found.`;
     (async () => {
       try {
         const memoryNote = nicheMemory
-          ? `🧠 Loading niche memory from ${nicheMemory.runs_count} previous run${nicheMenory.runs_count > 1 ? "s" : ""} in ${niche}/${city}. Starting smarter...`
+          ? `🧠 Loading niche memory from ${nicheMemory.runs_count} previous run${nicheMemory.runs_count > 1 ? "s" : ""} in ${niche}/${city}. Starting smarter...`
           : `🧠 Super Brain activated. First run in ${niche}/${city} — building niche knowledge. Searching now...`;
 
         await sb.from("pipeline_chat").insert({
@@ -764,4 +812,30 @@ Never invent contact info or review counts. Only save what you actually found.`;
         const { data: fr } = await sb.from("pipeline_runs").select("status").eq("id", run_id).single();
         if (fr?.status === "running") {
           await sb.from("pipeline_runs").update({
-            status: "paused_approval", current_node: "paused_ap
+            status: "paused_approval", current_node: "paused_approval"
+          }).eq("id", run_id);
+        }
+
+      } catch (err) {
+        await sb.from("pipeline_runs").update({
+          status: "error", error_message: String(err)
+        }).eq("id", run_id);
+        await sb.from("pipeline_chat").insert({
+          run_id, client_id, role: "claude",
+          message: `❌ Error: ${String(err)}`, type: "error"
+        });
+      }
+    })();
+
+    return new Response(
+      JSON.stringify({ started: true, run_id }),
+      { headers: { ...CORS, "Content-Type": "application/json" } }
+    );
+
+  } catch (e) {
+    return new Response(
+      JSON.stringify({ error: String(e) }),
+      { status: 500, headers: { ...CORS, "Content-Type": "application/json" } }
+    );
+  }
+});
