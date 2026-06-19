@@ -707,12 +707,14 @@ email_body MUST follow this exact structure:
   [AI RECEPTIONIST OFFER — always include this short section:]
   "We can also add an AI receptionist to your website — it answers every visitor question 24/7, captures their name and number, and emails it to you instantly. Most [niche] owners say it pays for itself in the first week."
 
-  [call to action: "Worth a 15-min call this week?"]
+  [CLOSING — use this exact structure, every single email, no exceptions:]
+  "Is this worth a 10-minute call? If so, just reply and tell me what time works best for you — I'll send you a direct link to grab a slot on my calendar."
 
 • Under 220 words total
 • No "hope this finds you well"
 • No generic openers
 • No price in the email — ever
+• The closing MUST always ask if it's worth a 10-minute call AND ask them to reply with their preferred time so you can send the calendar link — never just "let me know" or "reply if interested"
 • The AI receptionist mention should feel natural — 2 sentences only, specific to their niche
 • The social proof should sound casual: "We've seen this work for [niche] businesses in cities like [city]..."
 
