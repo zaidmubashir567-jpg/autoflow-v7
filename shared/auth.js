@@ -83,90 +83,28 @@ export async function getUser() {
   return session?.user ?? null;
 }
 
-// ─── Role detection ─────────────────────────────────────────
-// admin   → has a row in clients where user_id = auth.uid()
-// client  → has a row in clients where portal_user_id = auth.uid()
-// none    → not linked to any client yet (new user)
+// ─── Role detection — always admin (single user) ─────────────
 export async function getUserRole() {
-  const cached = _cGet('_af_role');
-  if (cached !== undefined) return cached;
-
-  const user = await getUser();
-  if (!user) return 'none';
-
-  // Check admin first
-  const { data: adminRow } = await supabase
-    .from('clients')
-    .select('id')
-    .eq('user_id', user.id)
-    .single();
-
-  if (adminRow) { _cSet('_af_role', 'admin'); return 'admin'; }
-
-  // Check portal client
-  const { data: portalRow } = await supabase
-    .from('clients')
-    .select('id')
-    .eq('portal_user_id', user.id)
-    .single();
-
-  const role = portalRow ? 'client' : 'none';
-  _cSet('_af_role', role);
-  return role;
+  return 'admin';
 }
 
-// ─── Get client_id for current user ─────────────────────────
+// ─── Get client_id — hardcoded (single user) ─────────────────
 export async function getClientId() {
-  const cached = _cGet('_af_cid');
-  if (cached !== undefined) return cached;
-
-  const user = await getUser();
-  if (!user) return null;
-
-  const { data } = await supabase
-    .from('clients')
-    .select('id')
-    .or(`user_id.eq.${user.id},portal_user_id.eq.${user.id}`)
-    .single();
-
-  const cid = data?.id ?? null;
-  _cSet('_af_cid', cid);
-  return cid;
+  return _ADMIN_CLIENT_ID;
 }
 
-// ─── Redirect away from login if already authed ─────────────
-// Call on index.html to skip login when session is active
+// ─── Redirect to admin dashboard (no auth check needed) ──────
 export async function redirectIfAuthed() {
-  const session = await getSession();
-  if (!session) return;
-  const role = await getUserRole();
-  if (role === 'admin') { location.href = '/admin/dashboard.html'; }
-  else if (role === 'client') { location.href = '/client/dashboard.html'; }
+  location.href = '/admin/dashboard.html';
 }
 
-// ─── Auth guard — call at top of every protected page ───────
-// Usage: await requireAuth('admin')  OR  await requireAuth('client')
+// ─── Hardcoded client ID — single-user admin, no login required ─
+const _ADMIN_CLIENT_ID = 'dc076116-c6fa-4f27-ad91-cfbd2e871a48';
+
+// ─── Auth guard — no-op, always passes (single user, no login) ──
 export async function requireAuth(requiredRole = 'admin') {
-  const session = await getSession();
-  if (!session) {
-    // Redirect to the correct login page based on required role
-    location.href = requiredRole === 'client' ? '/client/login.html' : '/admin/login.html';
-    return null;
-  }
-
-  const role = await getUserRole();
-
-  if (requiredRole === 'admin' && role !== 'admin') {
-    location.href = role === 'client' ? '/client/dashboard.html' : '/admin/login.html';
-    return null;
-  }
-
-  if (requiredRole === 'client' && role === 'none') {
-    location.href = '/client/login.html';
-    return null;
-  }
-
-  return { session, role, user: session.user };
+  // No authentication wall — single-user private admin panel
+  return { role: 'admin', user: { email: 'admin' } };
 }
 
 // ─── Google OAuth token (for Places, Gemini, Gmail) ─────────
