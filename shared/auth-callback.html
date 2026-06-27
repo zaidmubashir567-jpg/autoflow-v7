@@ -22,10 +22,19 @@
     import { supabase } from '/shared/auth.js';
     import { routeByRole } from '/shared/router.js';
 
+    function routeWithGmailCheck() {
+      // If a gmail token is pending (from connect-gmail OAuth), go back to credentials
+      if (sessionStorage.getItem('_gmail_pending')) {
+        location.href = '/admin/credentials.html';
+        return true;
+      }
+      return false;
+    }
+
     // Supabase handles the hash/code exchange automatically
     supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session) {
-        await routeByRole();
+        if (!routeWithGmailCheck()) await routeByRole();
       } else if (event === 'SIGNED_OUT') {
         location.href = '/';
       }
@@ -33,7 +42,7 @@
 
     // Fallback: if already have session just route
     const { data: { session } } = await supabase.auth.getSession();
-    if (session) await routeByRole();
+    if (session) { if (!routeWithGmailCheck()) await routeByRole(); }
   </script>
 </body>
 </html>
