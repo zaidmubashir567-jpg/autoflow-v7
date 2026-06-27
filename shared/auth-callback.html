@@ -16,25 +16,61 @@
 <body>
   <div class="box">
     <div class="spinner"></div>
-    <p>Signing you in…</p>
+    <p id="msg">Signing you in…</p>
   </div>
   <script type="module">
     import { supabase } from '/shared/auth.js';
     import { routeByRole } from '/shared/router.js';
 
-    function routeWithGmailCheck() {
-      // If a gmail token is pending (from connect-gmail OAuth), go back to credentials
-      if (sessionStorage.getItem('_gmail_pending')) {
-        location.href = '/admin/credentials.html';
-        return true;
+    async function handleGmailCallback(session) {
+      // Called when OAuth completes — if _gmail_cid is set this is a Gmail connect, not login
+      const _gcid = sessionStorage.getItem('_gmail_cid');
+      if (!_gcid || !session?.provider_token) return false;
+
+      document.getElementById('msg').textContent = 'Saving Gmail token…';
+
+      // Stash the Gmail token for credentials.html to pick up
+      sessionStorage.setItem('_gmail_pending', JSON.stringify({
+        cid:      _gcid,
+        access:   session.provider_token,
+        refresh:  session.provider_refresh_token ?? null,
+        user:     session.user.email,
+        saved_at: new Date().toISOString()
+      }));
+      sessionStorage.removeItem('_gmail_cid');
+
+      // Restore the original admin session saved before connectGoogle() was called
+      const adminAccess  = sessionStorage.getItem('_admin_access');
+      const adminRefresh = sessionStorage.getItem('_admin_refresh');
+      sessionStorage.removeItem('_admin_access');
+      sessionStorage.removeItem('_admin_refresh');
+
+      // Clear stale role cache so it re-validates with restored session
+      ['_af_role','_af_cid','_af_uid'].forEach(k => sessionStorage.removeItem(k));
+
+      if (adminAccess && adminRefresh) {
+        document.getElementById('msg').textContent = 'Restoring your session…';
+        const { error } = await supabase.auth.setSession({
+          access_token:  adminAccess,
+          refresh_token: adminRefresh
+        });
+        if (!error) {
+          location.href = '/admin/credentials.html';
+          return true;
+        }
       }
-      return false;
+
+      // Fallback: session restore failed — go to admin login
+      await supabase.auth.signOut();
+      location.href = '/admin/login.html';
+      return true;
     }
 
     // Supabase handles the hash/code exchange automatically
     supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session) {
-        if (!routeWithGmailCheck()) await routeByRole();
+        const handled = await handleGmailCallback(session);
+        if (!handled) await routeByRole();
       } else if (event === 'SIGNED_OUT') {
         location.href = '/';
       }
@@ -42,7 +78,10 @@
 
     // Fallback: if already have session just route
     const { data: { session } } = await supabase.auth.getSession();
-    if (session) { if (!routeWithGmailCheck()) await routeByRole(); }
+    if (session) {
+      const handled = await handleGmailCallback(session);
+      if (!handled) await routeByRole();
+    }
   </script>
 </body>
 </html>
