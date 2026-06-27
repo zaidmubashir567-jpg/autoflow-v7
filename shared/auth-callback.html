@@ -48,21 +48,8 @@
       // Clear stale role cache so it re-validates with restored session
       ['_af_role','_af_cid','_af_uid'].forEach(k => sessionStorage.removeItem(k));
 
-      if (adminAccess && adminRefresh) {
-        document.getElementById('msg').textContent = 'Restoring your session…';
-        const { error } = await supabase.auth.setSession({
-          access_token:  adminAccess,
-          refresh_token: adminRefresh
-        });
-        if (!error) {
-          location.href = '/admin/credentials.html';
-          return true;
-        }
-      }
-
-      // Fallback: session restore failed — go to admin login
-      await supabase.auth.signOut();
-      location.href = '/admin/login.html';
+      // No session to restore needed (no-auth admin) — go straight to credentials
+      location.href = '/admin/credentials.html';
       return true;
     }
 
