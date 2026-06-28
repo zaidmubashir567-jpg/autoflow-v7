@@ -102,12 +102,14 @@ export async function logOutreach(entry) {
 }
 
 // Twin: count today's sends for this client (hard cap check)
+// Filter by status='sent' — sent_at has DEFAULT now() so every row has it set at insert time
 export async function getTodaySendCount(clientId) {
-  const today = new Date(); today.setHours(0,0,0,0);
+  const today = new Date(); today.setUTCHours(0,0,0,0);
   const { count, error } = await supabase
     .from('outreach_log')
     .select('*', { count: 'exact', head: true })
     .eq('client_id', clientId)
+    .eq('status', 'sent')
     .gte('sent_at', today.toISOString());
   if (error) throw error;
   return count ?? 0;
