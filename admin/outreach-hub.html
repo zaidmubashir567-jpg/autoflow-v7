@@ -270,47 +270,38 @@ window.saveAndSend = async function(idx) {
 
 // ── Send one email ─────────────────────────────────────────────
 window.sendOne = async function(outreachId, bizName) {
-  const btn = document.querySelector(`#eq-${outreachId} .btn-success`);
-  if (btn) { btn.textContent = '⏳ Sending…'; btn.disabled = true; }
+  const card = document.getElementById(`eq-${outreachId}`);
+  const btn = card?.querySelector('.btn-success');
+  if (btn) { btn.textContent = '⏳ Approving…'; btn.disabled = true; }
 
   try {
-    // Approve this email: set status=scheduled + scheduled_at=now so follow-up-engine picks it up
-    await fetch(`${SUPA}/rest/v1/outreach_log?id=eq.${outreachId}`, {
+    // Step 1: Approve — set status=scheduled + scheduled_at=now
+    const patchRes = await fetch(`${SUPA}/rest/v1/outreach_log?id=eq.${outreachId}`, {
       method: 'PATCH',
-      headers: { apikey: ANON, Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      headers: { apikey: ANON, Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
       body: JSON.stringify({ status: 'scheduled', scheduled_at: new Date().toISOString() })
     });
 
-    // Trigger follow-up engine to send it
-    const res = await fetch(`${FN}/follow-up-engine`, {
+    if (!patchRes.ok) throw new Error(`DB update failed: ${patchRes.status}`);
+
+    // Step 2: Remove from UI immediately — it's approved, engine sends within the hour
+    emailQueue = emailQueue.filter(r => r.id !== outreachId);
+    card?.remove();
+    document.getElementById('emailCount').textContent = emailQueue.length;
+    if (emailQueue.length === 0) renderEmailQueue();
+
+    // Step 3: Fire follow-up engine in background (don't await — non-blocking)
+    fetch(`${FN}/follow-up-engine`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}` },
-      body: JSON.stringify({ outreach_id: outreachId })
-    });
-    const data = await res.json().catch(() => ({}));
+      body: '{}'
+    }).then(r => r.json()).then(data => {
+      const sent = data.results?.reduce((s, r) => s + (r.sent || 0), 0) ?? 0;
+      if (sent > 0) toast(`✅ Sent to ${bizName}!`, 'success');
+      else toast(`✅ Approved — email will send shortly`, 'success');
+    }).catch(() => {});
 
-    // Check if actually sent by polling the status
-    await new Promise(r => setTimeout(r, 2000));
-    const check = await (await fetch(
-      `${SUPA}/rest/v1/outreach_log?id=eq.${outreachId}&select=status`,
-      { headers: { apikey: ANON, Authorization: `Bearer ${ANON}` } }
-    )).json();
-
-    const newStatus = check[0]?.status;
-    if (newStatus === 'sent') {
-      toast(`✅ Sent to ${bizName}!`, 'success');
-      // Remove from queue
-      emailQueue = emailQueue.filter(r => r.id !== outreachId);
-      document.getElementById(`eq-${outreachId}`)?.remove();
-      document.getElementById('emailCount').textContent = emailQueue.length;
-      if (emailQueue.length === 0) renderEmailQueue();
-    } else if (newStatus === 'needs_sender') {
-      toast(`⚠️ Gmail not connected — reconnect in Credentials`, 'error');
-      if (btn) { btn.textContent = '⚠️ No sender'; btn.disabled = false; }
-    } else {
-      toast(`Email queued — follow-up engine will send within the hour`, 'info');
-      if (btn) { btn.textContent = '⏰ Queued'; btn.disabled = false; }
-    }
+    toast(`✅ ${bizName} approved`, 'success');
   } catch(e) {
     toast('Error: ' + e.message, 'error');
     if (btn) { btn.textContent = '✈️ Send'; btn.disabled = false; }
@@ -321,46 +312,36 @@ window.sendOne = async function(outreachId, bizName) {
 window.sendAll = async function() {
   if (emailQueue.length === 0) return;
   const btn = document.querySelector('[onclick="sendAll()"]');
-  if (btn) { btn.textContent = '⏳ Sending all…'; btn.disabled = true; }
+  const count = emailQueue.length;
+  if (btn) { btn.textContent = `⏳ Approving ${count}…`; btn.disabled = true; }
 
   try {
-    // Approve all: set status=scheduled + scheduled_at=now so follow-up-engine picks them all up
+    // Approve all — set status=scheduled + scheduled_at=now in parallel
     const ids = emailQueue.map(r => r.id);
-    for (const id of ids) {
-      await fetch(`${SUPA}/rest/v1/outreach_log?id=eq.${id}`, {
+    await Promise.all(ids.map(id =>
+      fetch(`${SUPA}/rest/v1/outreach_log?id=eq.${id}`, {
         method: 'PATCH',
-        headers: { apikey: ANON, Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        headers: { apikey: ANON, Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
         body: JSON.stringify({ status: 'scheduled', scheduled_at: new Date().toISOString() })
-      });
-    }
+      })
+    ));
 
-    // Fire follow-up engine
-    const res = await fetch(`${FN}/follow-up-engine`, {
+    // Remove all cards from UI immediately — they're approved
+    emailQueue = [];
+    document.getElementById('emailCount').textContent = 0;
+    renderEmailQueue();
+    toast(`✅ ${count} email${count !== 1 ? 's' : ''} approved — sending now via Sales@attoleads.com`, 'success');
+
+    // Fire follow-up engine in background (non-blocking)
+    fetch(`${FN}/follow-up-engine`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}` },
       body: '{}'
-    });
-    const data = await res.json().catch(() => ({}));
-
-    // Check results
-    const totalSent = data.results?.reduce((sum, r) => sum + (r.sent || 0), 0) ?? 0;
-    const totalSkipped = data.results?.reduce((sum, r) => sum + (r.skipped || 0), 0) ?? 0;
-
-    if (totalSent > 0) {
-      toast(`✅ ${totalSent} email${totalSent !== 1 ? 's' : ''} sent from Sales@attoleads.com!`, 'success');
-      // Reload queue
-      emailQueue = [];
-      document.getElementById('emailCount').textContent = 0;
-      renderEmailQueue();
-    } else if (data.results?.[0]?.reason === 'daily cap reached') {
-      toast('Daily email cap reached — resets at midnight', 'error');
-    } else if (totalSkipped > 0 && totalSent === 0) {
-      toast('⚠️ Gmail not connected or token expired — go to Credentials to reconnect', 'error');
-    } else {
-      toast(`Queued — follow-up engine processing. Check back in a minute.`, 'info');
-    }
-
-    if (btn) { btn.textContent = `✈️ Approve & Send All (${emailQueue.length})`; btn.disabled = false; }
+    }).then(r => r.json()).then(data => {
+      const sent = data.results?.reduce((s, r) => s + (r.sent || 0), 0) ?? 0;
+      if (sent > 0) toast(`📨 ${sent} email${sent !== 1 ? 's' : ''} delivered!`, 'success');
+      else if (data.results?.[0]?.reason === 'daily cap reached') toast('Daily cap reached — remaining send at midnight', 'info');
+    }).catch(() => {});
   } catch(e) {
     toast('Error: ' + e.message, 'error');
     if (btn) { btn.textContent = `✈️ Approve & Send All (${emailQueue.length})`; btn.disabled = false; }
