@@ -243,8 +243,7 @@ document.getElementById('app').innerHTML = `
     </div>
   </main>`;
 
-// Load data
-loadMeetings();
+// Load data — called after functions are defined below
 renderDayPicker();
 
 // ── Meeting detail modal ───────────────────────────────────
@@ -270,6 +269,7 @@ window.loadMeetings = async function() {
   renderMeetings();
   renderStats();
 };
+loadMeetings(); // safe to call now — function is defined
 
 function renderStats() {
   const confirmed = currentMeetings.filter(m => m.status === 'confirmed').length;
