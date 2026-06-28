@@ -282,39 +282,152 @@ async function sendViaSmtp(
   return { ok: false, error: "SMTP via relay not yet configured — connect Gmail or add Resend key" };
 }
 
-// ── Email builder (HTML with clickable links + attoleads.com footer) ──────
+// ── Email builder — branded header, styled audit card, dark footer ──────────
 function buildRawEmail(to: string, subject: string, body: string): string {
-  // Escape HTML special chars
-  const escaped = body
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  // ── 1. Split body on the ━━━ dividers used by run-pipeline ──────────────
+  // Body structure (from run-pipeline auditBlock):
+  //   \n━━━\n📊 QUICK AUDIT…\n━━━\n🤖 AI RECEPTIONIST…\n━━━\n\n[email body]
+  const DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
+  const rawParts = body.split(DIVIDER).map((p) => p.trim()).filter((p) => p.length > 0);
 
-  // Make URLs clickable
-  const linked = escaped.replace(
-    /(https?:\/\/[^\s<>"]+)/g,
-    '<a href="$1" style="color:#6366f1;font-weight:600;word-break:break-all">$1</a>'
-  );
+  let emailBodyText = body;
+  let auditContent  = "";
 
-  // Convert newlines to <br>
-  const htmlBody = linked.replace(/\n/g, "<br>\n");
+  if (rawParts.length >= 2) {
+    // Everything except the last chunk = audit sections; last chunk = email prose
+    auditContent  = rawParts.slice(0, rawParts.length - 1).join("\n\n");
+    emailBodyText = rawParts[rawParts.length - 1];
+  }
 
+  // ── 2. Helpers ────────────────────────────────────────────────────────────
+  // Escape + linkify a block of text, preserving line breaks
+  function renderText(text: string): string {
+    return text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/(https?:\/\/[^\s<>"]+)/g,
+        '<a href="$1" style="color:#6366f1;font-weight:600;word-break:break-all">$1</a>')
+      .replace(/\n/g, "<br>\n");
+  }
+
+  // Render audit lines — each line gets its own row so emojis align nicely
+  function renderAuditLines(text: string): string {
+    return text
+      .split("\n")
+      .filter((l) => l.trim())
+      .map((line) => {
+        const safe = line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        // Section headers (📊 / 🤖) get a slightly larger style
+        const isHeader = /^[📊🤖]/.test(line);
+        return isHeader
+          ? `<div style="font-size:13px;font-weight:800;color:#a5b4fc;margin-top:4px;margin-bottom:6px;letter-spacing:0.3px">${safe}</div>`
+          : `<div style="font-size:12.5px;color:#cbd5e1;line-height:1.7;padding:2px 0 2px 8px;border-left:2px solid #3730a3">${safe}</div>`;
+      })
+      .join("\n");
+  }
+
+  // ── 3. Build the HTML ─────────────────────────────────────────────────────
   const html = `<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1a1a2e;line-height:1.7;max-width:620px;margin:0 auto;padding:24px 20px;background:#fff">
-  <div style="white-space:pre-wrap">${htmlBody}</div>
-  <br>
-  <div style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:16px;font-size:12px;color:#6b7280">
-    Sent via <a href="https://attoleads.com" style="color:#6366f1;font-weight:600;text-decoration:none">AttoLeads.com</a>
-    &nbsp;·&nbsp; AI-powered lead generation &amp; outreach for local businesses
-    <br>
-    To unsubscribe, reply <strong>STOP</strong> and you will not hear from us again.
-  </div>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif">
+
+  <!-- ═══ HEADER ═══ -->
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+    <tr>
+      <td style="background:linear-gradient(135deg,#4f46e5 0%,#6366f1 50%,#818cf8 100%);padding:0">
+        <table width="620" align="center" cellpadding="0" cellspacing="0" role="presentation"
+               style="max-width:620px;margin:0 auto">
+          <tr>
+            <td style="padding:22px 32px 18px 32px">
+              <div style="color:#fff;font-size:26px;font-weight:900;letter-spacing:-1px;line-height:1">
+                AttoLeads
+              </div>
+              <div style="color:rgba(255,255,255,0.75);font-size:11px;margin-top:5px;letter-spacing:1.5px;text-transform:uppercase">
+                AI-Powered Lead Generation &amp; Outreach
+              </div>
+            </td>
+            <td style="padding:22px 32px 18px 0;text-align:right;vertical-align:middle">
+              <a href="https://attoleads.com"
+                 style="background:rgba(255,255,255,0.15);color:#fff;text-decoration:none;
+                        font-size:11px;font-weight:700;padding:7px 16px;border-radius:20px;
+                        border:1px solid rgba(255,255,255,0.3);letter-spacing:0.5px">
+                attoleads.com ↗
+              </a>
+            </td>
+          </tr>
+          <!-- thin accent bar -->
+          <tr><td colspan="2" style="height:4px;background:linear-gradient(90deg,#fbbf24,#f59e0b,#fbbf24)"></td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <!-- ═══ BODY CARD ═══ -->
+  <table width="620" align="center" cellpadding="0" cellspacing="0" role="presentation"
+         style="max-width:620px;margin:0 auto">
+    <tr>
+      <td style="background:#ffffff;padding:32px 36px 28px 36px">
+
+        <!-- Email prose -->
+        <div style="font-size:14px;line-height:1.85;color:#1e293b;white-space:pre-wrap">
+          ${renderText(emailBodyText)}
+        </div>
+
+        ${auditContent ? `
+        <!-- ── Audit card ── -->
+        <div style="background:#0f172a;border-radius:12px;padding:22px 24px;margin:28px 0 8px 0;
+                    border-top:4px solid #fbbf24;box-shadow:0 4px 24px rgba(15,23,42,0.18)">
+          ${renderAuditLines(auditContent)}
+        </div>` : ""}
+
+      </td>
+    </tr>
+  </table>
+
+  <!-- ═══ FOOTER ═══ -->
+  <table width="620" align="center" cellpadding="0" cellspacing="0" role="presentation"
+         style="max-width:620px;margin:0 auto">
+    <tr>
+      <td style="background:#0f172a;padding:24px 36px">
+        <!-- accent line -->
+        <div style="height:3px;background:linear-gradient(90deg,#6366f1,#818cf8,#6366f1);border-radius:2px;margin-bottom:18px"></div>
+
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+          <tr>
+            <td style="vertical-align:top">
+              <div style="color:#e2e8f0;font-size:16px;font-weight:800;letter-spacing:-0.5px">AttoLeads</div>
+              <div style="color:#64748b;font-size:11px;margin-top:4px;line-height:1.6">
+                AI-powered lead generation<br>for local businesses
+              </div>
+            </td>
+            <td style="vertical-align:top;text-align:right">
+              <a href="https://attoleads.com"
+                 style="color:#818cf8;font-size:12px;font-weight:700;text-decoration:none">
+                attoleads.com
+              </a><br>
+              <span style="color:#475569;font-size:10px">© ${new Date().getFullYear()} AttoLeads</span>
+            </td>
+          </tr>
+        </table>
+
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid #1e293b;
+                    font-size:10px;color:#475569;text-align:center;line-height:1.6">
+          You are receiving this because your business matched our outreach criteria.
+          To unsubscribe, reply <span style="color:#94a3b8;font-weight:700">STOP</span> and we will remove you immediately.
+        </div>
+      </td>
+    </tr>
+  </table>
+
 </body>
 </html>`;
 
-  // Encode to base64url — handle UTF-8 / emoji in body
+  // ── 4. Encode to RFC 2822 base64url for Gmail API ─────────────────────────
   const bytes = new TextEncoder().encode(
     [
       `To: ${to}`,
@@ -326,7 +439,6 @@ function buildRawEmail(to: string, subject: string, body: string): string {
     ].join("\r\n")
   );
 
-  // Convert Uint8Array → binary string → base64
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
