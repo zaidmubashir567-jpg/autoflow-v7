@@ -4,115 +4,106 @@
   <meta charset="UTF-8">
   <title>LeadFyn — Connecting…</title>
   <style>
-    body { font-family: monospace; background:#0a0a0f; color:#e2e8f0; padding:24px; }
-    .line { margin:6px 0; font-size:13px; }
-    .ok  { color:#4ade80; }
-    .err { color:#f87171; }
-    .warn{ color:#facc15; }
+    body { font-family: -apple-system,sans-serif; display:flex; align-items:center;
+           justify-content:center; min-height:100vh; background:#0a0a0f; }
+    .box { text-align:center; }
+    .spinner { width:40px; height:40px; border:3px solid #1e1e2e; border-top-color:#6366f1;
+               border-radius:50%; animation:spin .7s linear infinite; margin:0 auto 16px; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    p { color:#64748b; font-size:15px; }
   </style>
 </head>
 <body>
-  <div id="log"></div>
+  <div class="box">
+    <div class="spinner"></div>
+    <p id="msg">Connecting…</p>
+  </div>
   <script type="module">
-    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
-    import { updateClient } from '/shared/db.js';
+    import { supabase } from '/shared/auth.js';
     import { routeByRole } from '/shared/router.js';
 
     const SUPABASE_URL  = 'https://ndwvsrtyjnaddrifafqk.supabase.co';
     const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kd3ZzcnR5am5hZGRyaWZhZnFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4ODMxMDgsImV4cCI6MjA5MzQ1OTEwOH0.7XoOKB74DGiXac3cfSSiyvREuWZ7qbQ2QbxE6d1rnlM';
 
-    // Fresh client with detectSessionInUrl so we catch the PKCE exchange
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+    const msg  = document.getElementById('msg');
+    let _handled = false;
+
+    async function saveGmailToken(session, _gcid) {
+      // Only save columns that are in PostgREST's schema cache
+      // (gmail_user + gmail_token_saved_at are in DB but schema cache not refreshed yet)
+      const body = { gmail_access: session.provider_token };
+      if (session.provider_refresh_token) body.gmail_refresh = session.provider_refresh_token;
+
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/clients?id=eq.${_gcid}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey':        SUPABASE_ANON,
+          'Authorization': 'Bearer ' + SUPABASE_ANON,
+          'Content-Type':  'application/json'
+        },
+        body: JSON.stringify(body)
+      });
+      if (!r.ok) {
+        const err = await r.text();
+        throw new Error(`DB save failed ${r.status}: ${err}`);
+      }
+    }
+
+    async function handleGmailCallback(session) {
+      const _gcid = localStorage.getItem('_gmail_cid') || sessionStorage.getItem('_gmail_cid');
+      if (!_gcid) return false;  // not a Gmail connect — normal login
+
+      if (!session?.provider_token) {
+        msg.textContent = 'Auth error — no token. Try again.';
+        localStorage.removeItem('_gmail_cid');
+        sessionStorage.removeItem('_gmail_cid');
+        setTimeout(() => { location.href = '/admin/credentials.html'; }, 2000);
+        return true;
+      }
+
+      msg.textContent = 'Saving Gmail token…';
+      try {
+        await saveGmailToken(session, _gcid);
+        msg.textContent = 'Gmail connected ✓';
+      } catch(e) {
+        console.error('[auth-callback]', e);
+        msg.textContent = 'Error: ' + e.message;
+        // Still redirect after showing error
+      }
+
+      localStorage.removeItem('_gmail_cid');
+      sessionStorage.removeItem('_gmail_cid');
+      setTimeout(() => { location.href = '/admin/credentials.html'; }, 1200);
+      return true;
+    }
+
+    // onAuthStateChange — fires after PKCE/implicit exchange, provider_token IS present
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      if (_handled) return;
+      if (event === 'SIGNED_IN' && session) {
+        _handled = true;
+        const gmailHandled = await handleGmailCallback(session);
+        if (!gmailHandled) await routeByRole();
+      } else if (event === 'SIGNED_OUT') {
+        location.href = '/';
+      }
     });
 
-    const log = document.getElementById('log');
-    function line(cls, txt) {
-      const d = document.createElement('div');
-      d.className = 'line ' + cls;
-      d.textContent = txt;
-      log.appendChild(d);
-    }
-
-    line('', '— auth-callback debug —');
-    line('', 'URL: ' + location.href.slice(0, 120));
-
-    const _gcid = localStorage.getItem('_gmail_cid') || sessionStorage.getItem('_gmail_cid');
-    line(_gcid ? 'ok' : 'err', '_gmail_cid: ' + (_gcid || 'MISSING'));
-
-    // Try explicit code exchange first
-    const code = new URLSearchParams(location.search).get('code');
-    line(code ? 'ok' : 'warn', 'code in URL: ' + (code ? code.slice(0,12)+'…' : 'none'));
-
-    if (code && _gcid) {
-      line('', 'Exchanging code for session…');
-      try {
-        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error) {
-          line('err', 'exchangeCodeForSession error: ' + error.message);
-        } else {
-          const sess = data.session;
-          line('ok', 'Session user: ' + (sess?.user?.email ?? 'none'));
-          line(sess?.provider_token ? 'ok' : 'err', 'provider_token: ' + (sess?.provider_token ? sess.provider_token.slice(0,20)+'…' : 'NULL'));
-          line(sess?.provider_refresh_token ? 'ok' : 'warn', 'provider_refresh_token: ' + (sess?.provider_refresh_token ? 'present' : 'null'));
-
-          if (sess?.provider_token) {
-            line('', 'Saving to DB…');
-            const gmailUpdate = {
-              gmail_access:         sess.provider_token,
-              gmail_user:           sess.user.email,
-              gmail_token_saved_at: new Date().toISOString()
-            };
-            if (sess.provider_refresh_token) gmailUpdate.gmail_refresh = sess.provider_refresh_token;
-            try {
-              await updateClient(_gcid, gmailUpdate);
-              line('ok', '✓ Saved! Redirecting to credentials…');
-              localStorage.removeItem('_gmail_cid');
-              sessionStorage.removeItem('_gmail_cid');
-              setTimeout(() => { location.href = '/admin/credentials.html'; }, 2000);
-            } catch(e) {
-              line('err', 'DB save error: ' + e.message);
-            }
-          } else {
-            line('err', 'provider_token is null — cannot save Gmail. See below.');
-            line('warn', 'Full session keys: ' + Object.keys(sess || {}).join(', '));
-          }
-        }
-      } catch(e) {
-        line('err', 'Exception: ' + e.message);
+    // Fallback after 2s — gives implicit flow time to fire SIGNED_IN
+    setTimeout(async () => {
+      if (_handled) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session && !_handled) {
+        _handled = true;
+        const gmailHandled = await handleGmailCallback(session);
+        if (!gmailHandled) await routeByRole();
       }
-    } else if (!code) {
-      // No code — might be hash-based or already exchanged
-      line('warn', 'No code param. Falling back to onAuthStateChange…');
-      supabase.auth.onAuthStateChange(async (event, session) => {
-        line('', 'event: ' + event);
-        line(session?.provider_token ? 'ok' : 'warn', 'provider_token: ' + (session?.provider_token ? 'present' : 'null'));
-        if (event === 'SIGNED_IN' && session) {
-          if (_gcid && session.provider_token) {
-            line('ok', 'Saving via onAuthStateChange…');
-            const gmailUpdate = {
-              gmail_access: session.provider_token,
-              gmail_user: session.user.email,
-              gmail_token_saved_at: new Date().toISOString()
-            };
-            if (session.provider_refresh_token) gmailUpdate.gmail_refresh = session.provider_refresh_token;
-            await updateClient(_gcid, gmailUpdate);
-            localStorage.removeItem('_gmail_cid');
-            sessionStorage.removeItem('_gmail_cid');
-            line('ok', 'Saved! Redirecting…');
-            setTimeout(() => { location.href = '/admin/credentials.html'; }, 2000);
-          } else if (!_gcid) {
-            await routeByRole();
-          }
-        }
-      });
-    } else {
-      line('warn', '_gmail_cid missing — not a Gmail connect. Routing…');
-      setTimeout(async () => { await routeByRole(); }, 1000);
-    }
+    }, 2000);
 
-    // Hard fallback after 20s
-    setTimeout(() => { location.href = '/admin/credentials.html'; }, 20000);
+    // Hard fallback: never get stuck
+    setTimeout(() => {
+      if (!_handled) { _handled = true; location.href = '/admin/credentials.html'; }
+    }, 15000);
   </script>
 </body>
 </html>
