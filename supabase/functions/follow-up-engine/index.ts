@@ -274,19 +274,52 @@ async function sendViaSmtp(
   return { ok: false, error: "SMTP via relay not yet configured — connect Gmail or add Resend key" };
 }
 
-// ── Email builder ─────────────────────────────────────────────────
+// ── Email builder (HTML with clickable links + attoleads.com footer) ──────
 function buildRawEmail(to: string, subject: string, body: string): string {
-  const msg = [
-    `To: ${to}`,
-    `Subject: ${subject}`,
-    "Content-Type: text/plain; charset=utf-8",
-    "MIME-Version: 1.0",
-    "",
-    body,
-    "",
-    "---",
-    "To unsubscribe from these emails, reply STOP."
-  ].join("\r\n");
+  // Escape HTML special chars
+  const escaped = body
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 
-  return btoa(msg).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  // Make URLs clickable
+  const linked = escaped.replace(
+    /(https?:\/\/[^\s<>"]+)/g,
+    '<a href="$1" style="color:#6366f1;font-weight:600;word-break:break-all">$1</a>'
+  );
+
+  // Convert newlines to <br>
+  const htmlBody = linked.replace(/\n/g, "<br>\n");
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1a1a2e;line-height:1.7;max-width:620px;margin:0 auto;padding:24px 20px;background:#fff">
+  <div style="white-space:pre-wrap">${htmlBody}</div>
+  <br>
+  <div style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:16px;font-size:12px;color:#6b7280">
+    Sent via <a href="https://attoleads.com" style="color:#6366f1;font-weight:600;text-decoration:none">AttoLeads.com</a>
+    &nbsp;·&nbsp; AI-powered lead generation &amp; outreach for local businesses
+    <br>
+    To unsubscribe, reply <strong>STOP</strong> and you will not hear from us again.
+  </div>
+</body>
+</html>`;
+
+  // Encode to base64url — handle UTF-8 / emoji in body
+  const bytes = new TextEncoder().encode(
+    [
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      "MIME-Version: 1.0",
+      "Content-Type: text/html; charset=utf-8",
+      "",
+      html
+    ].join("\r\n")
+  );
+
+  // Convert Uint8Array → binary string → base64
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
