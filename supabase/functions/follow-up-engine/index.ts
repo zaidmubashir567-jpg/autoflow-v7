@@ -149,9 +149,12 @@ async function processClient(
 
       sent++;
     } else {
-      // Log failure but keep as scheduled — will retry next hour
+      // Mark as needs_sender so the dashboard shows the error clearly
       console.error(`[follow-up-engine] Failed to send ${row.id}:`, sendResult.error);
-      // After 3 attempts give up — for now just leave as scheduled
+      await sb.from("outreach_log")
+        .update({ status: "needs_sender" })
+        .eq("id", row.id);
+      skipped++;
     }
   }
 
