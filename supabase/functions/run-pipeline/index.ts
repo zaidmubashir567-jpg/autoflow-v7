@@ -634,7 +634,7 @@ Use this intel from the first search — start with the query patterns that work
     // ── System prompt ──────────────────────────────────────────
     const systemPrompt = `You are AutoFlow's Claude Super Brain — an autonomous AI lead generation agent.
 
-MISSION: Find 15-20 high-quality ${niche} businesses in ${city}, ${state}. Build complete outreach packages. You ARE the pipeline — Claude API is the ONLY requirement.${nicheMemoryBlock}
+MISSION: Find 5-8 high-quality ${niche} businesses in ${city}, ${state}. Build complete outreach packages. You ARE the pipeline — Claude API is the ONLY requirement. Work FAST — you have 2 minutes maximum, prioritise depth over breadth.${nicheMemoryBlock}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PROCESS
@@ -753,6 +753,9 @@ Never invent contact info or review counts. Only save what you actually found.`;
 
     // ── Agentic loop (background) ─────────────────────────────
     (async () => {
+      const LOOP_START = Date.now();
+      const MAX_MS = 120_000; // 120s hard limit — leaves 30s buffer before Supabase 150s timeout
+
       try {
         const memoryNote = nicheMemory
           ? `🧠 Loading niche memory from ${nicheMemory.runs_count} previous run${nicheMemory.runs_count > 1 ? "s" : ""} in ${niche}/${city}. Starting smarter...`
@@ -770,7 +773,16 @@ Never invent contact info or review counts. Only save what you actually found.`;
         }];
 
         let iters = 0;
-        while (iters++ < 80) {
+        while (iters++ < 30) {
+          // Hard timeout guard — stop cleanly before Supabase kills us
+          if (Date.now() - LOOP_START > MAX_MS) {
+            await sb.from("pipeline_chat").insert({
+              run_id, client_id, role: "claude",
+              message: `⏱️ Time limit reached (${Math.round((Date.now() - LOOP_START)/1000)}s). Wrapping up with what we found so far…`,
+              type: "info"
+            });
+            break;
+          }
           const res = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: {
@@ -779,8 +791,8 @@ Never invent contact info or review counts. Only save what you actually found.`;
               "content-type": "application/json"
             },
             body: JSON.stringify({
-              model: "claude-sonnet-4-6",
-              max_tokens: 8000,
+              model: "claude-haiku-4-5-20251001",
+              max_tokens: 4096,
               system: systemPrompt,
               tools: TOOLS,
               messages
