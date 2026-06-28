@@ -479,19 +479,26 @@ Use this intel from the first search — start with the query patterns that work
         const { data: run } = await sb.from("pipeline_runs")
           .select("leads_found,leads_qualified,emails_found").eq("id", run_id).single();
 
+        // place_id is NOT NULL — generate a unique placeholder for AI-discovered leads
+        const place_id = `ai_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+
         const { data: lead, error: le } = await sb.from("leads").insert({
-          run_id, client_id,
+          client_id,
+          place_id,                                    // required NOT NULL
           business_name: input.business_name,
           website:       input.website    ?? null,
           email:         input.email      ?? null,
           phone:         input.phone      ?? null,
           owner_name:    input.owner_name ?? null,
           address:       input.address    ?? null,
+          city,                                        // from run params
+          state:         state ?? null,
+          niche,                                       // from run params
           score:         input.score,
           score_reason:  input.score_reason ?? null,
-          channels:      input.channels   ?? ["email"],
           social_links:  input.social_links ?? {},
-          status:        "qualified"
+          qualify:       (input.score as number) >= 6, // boolean flag
+          stage:         'new',                        // pipeline_stage enum
         }).select().single();
 
         if (le || !lead) return JSON.stringify({ error: le?.message ?? "Insert failed" });
@@ -504,12 +511,12 @@ Use this intel from the first search — start with the query patterns that work
         const emailBodyWithAudit = auditBlock + "\n" + (input.email_body as string);
         await sb.from("outreach_log").insert({
           lead_id: lead.id, client_id, run_id,
-          channel:      "email",
-          subject:      input.email_subject,
-          body:         emailBodyWithAudit,
-          status:       "draft",
-          sent_at:      null,
+          channel:       "email",
+          subject:       input.email_subject,
+          body:          emailBodyWithAudit,
+          status:        "draft",
           follow_up_seq: 0
+          // sent_at omitted — NOT NULL DEFAULT now() will fill it in
         });
 
         // Phase 3: Schedule 3-touch follow-up emails (Day 3 / 7 / 14)
@@ -530,20 +537,19 @@ Use this intel from the first search — start with the query patterns that work
             body:          fu.body,
             status:        "scheduled",
             scheduled_at,
-            follow_up_seq: fu.seq,
-            sent_at:       null
+            follow_up_seq: fu.seq
+            // sent_at omitted — will default to creation time
           });
         }
 
         // SMS draft if phone found
         const channels = (input.channels as string[]) ?? [];
-        if (input.phone && channels.includes("sms")) {
+        if (input.phone && (channels.includes("sms") || input.phone)) {
           await sb.from("outreach_log").insert({
             lead_id: lead.id, client_id, run_id,
             channel:       "sms",
             body:          `Hi${input.owner_name ? " " + input.owner_name : ""}! I help ${niche} in ${city} get more clients with AI. Worth a quick call? — AutoFlow`,
             status:        "draft",
-            sent_at:       null,
             follow_up_seq: 0
           });
         }
