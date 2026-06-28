@@ -13,10 +13,17 @@ Deno.serve(async (req) => {
   const sb = getAdminClient();
 
   // Load all active clients
-  const { data: clients } = await sb
+  const { data: clients, error: clientErr } = await sb
     .from("clients")
-    .select("id, daily_email_cap, gmail_access, gmail_refresh, smtp_host, smtp_user, smtp_pass, claude_key")
+    .select("id, daily_email_cap, gmail_access, gmail_refresh, claude_key")
     .eq("active", true);
+
+  if (clientErr) {
+    console.error("[follow-up-engine] Client query failed:", clientErr.message);
+    return new Response(JSON.stringify({ ok: false, error: clientErr.message }), {
+      headers: { ...CORS, "Content-Type": "application/json" }
+    });
+  }
 
   if (!clients?.length) {
     return new Response(JSON.stringify({ processed: 0, message: "No active clients" }), {
@@ -111,8 +118,6 @@ async function processClient(
           row.subject as string,
           row.body as string
         );
-      } else if (client.smtp_host) {
-        sendResult = await sendViaSmtp(client, email, row.subject as string, row.body as string);
       } else {
         // No sender configured — mark as needs_sender so UI can flag it
         await sb.from("outreach_log")
