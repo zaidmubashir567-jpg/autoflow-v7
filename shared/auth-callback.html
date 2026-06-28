@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>LeadFyn — Signing in…</title>
+  <title>LeadFyn — Connecting…</title>
   <style>
     body { font-family: -apple-system,sans-serif; display:flex; align-items:center;
-           justify-content:center; min-height:100vh; background:#f8fafc; }
+           justify-content:center; min-height:100vh; background:#0a0a0f; }
     .box { text-align:center; }
-    .spinner { width:40px; height:40px; border:3px solid #e2e8f0; border-top-color:#4f46e5;
+    .spinner { width:40px; height:40px; border:3px solid #1e1e2e; border-top-color:#6366f1;
                border-radius:50%; animation:spin .7s linear infinite; margin:0 auto 16px; }
     @keyframes spin { to { transform:rotate(360deg); } }
     p { color:#64748b; font-size:15px; }
@@ -16,56 +16,78 @@
 <body>
   <div class="box">
     <div class="spinner"></div>
-    <p id="msg">Signing you in…</p>
+    <p id="msg">Connecting…</p>
   </div>
   <script type="module">
     import { supabase } from '/shared/auth.js';
+    import { updateClient } from '/shared/db.js';
     import { routeByRole } from '/shared/router.js';
 
+    const msg = document.getElementById('msg');
+    let _handled = false;
+
     async function handleGmailCallback(session) {
-      // Check both localStorage (new — survives cross-domain redirect)
-      // and sessionStorage (old — fallback)
+      // Check both localStorage (new code) and sessionStorage (legacy)
       const _gcid = localStorage.getItem('_gmail_cid') || sessionStorage.getItem('_gmail_cid');
-      if (!_gcid || !session?.provider_token) return false;
 
-      document.getElementById('msg').textContent = 'Saving Gmail token…';
+      if (!_gcid) return false;               // not a Gmail connect — normal login
+      if (!session?.provider_token) {
+        // provider_token missing — log and bail to credentials so user can retry
+        console.warn('[auth-callback] provider_token missing from session', session);
+        msg.textContent = 'Token missing — redirecting…';
+        localStorage.removeItem('_gmail_cid');
+        sessionStorage.removeItem('_gmail_cid');
+        setTimeout(() => { location.href = '/admin/credentials.html'; }, 1500);
+        return true; // mark handled so we don't routeByRole
+      }
 
-      // Stash the Gmail token for credentials.html to pick up on return
-      sessionStorage.setItem('_gmail_pending', JSON.stringify({
-        cid:      _gcid,
-        access:   session.provider_token,
-        refresh:  session.provider_refresh_token ?? null,
-        user:     session.user.email,
-        saved_at: new Date().toISOString()
-      }));
+      msg.textContent = 'Saving Gmail token…';
 
-      // Clean up all markers
+      // Save directly to DB right here — no sessionStorage bridge needed
+      const gmailUpdate = {
+        gmail_access:         session.provider_token,
+        gmail_user:           session.user.email,
+        gmail_token_saved_at: new Date().toISOString()
+      };
+      if (session.provider_refresh_token) {
+        gmailUpdate.gmail_refresh = session.provider_refresh_token;
+      }
+
+      try {
+        await updateClient(_gcid, gmailUpdate);
+        msg.textContent = 'Gmail connected ✓';
+      } catch (e) {
+        console.error('[auth-callback] updateClient failed', e);
+        msg.textContent = 'Save failed — redirecting…';
+      }
+
+      // Clean up markers
       localStorage.removeItem('_gmail_cid');
       sessionStorage.removeItem('_gmail_cid');
       sessionStorage.removeItem('_admin_access');
       sessionStorage.removeItem('_admin_refresh');
-      ['_af_role','_af_cid','_af_uid'].forEach(k => sessionStorage.removeItem(k));
 
-      // No-auth admin — go straight to credentials to pick up the pending token
-      location.href = '/admin/credentials.html';
+      setTimeout(() => { location.href = '/admin/credentials.html'; }, 800);
       return true;
     }
 
-    // Only use onAuthStateChange — avoids race with getSession() running BEFORE
-    // the PKCE code exchange completes (which would return old session with no provider_token)
-    let _handled = false;
+    // Listen for the SIGNED_IN event — fires after PKCE code exchange completes
+    // (provider_token IS present at this point)
     supabase.auth.onAuthStateChange(async (event, session) => {
       if (_handled) return;
       if (event === 'SIGNED_IN' && session) {
         _handled = true;
         const gmailHandled = await handleGmailCallback(session);
-        if (!gmailHandled) await routeByRole();
+        if (!gmailHandled) {
+          // Normal login — route by role
+          await routeByRole();
+        }
       } else if (event === 'SIGNED_OUT') {
         location.href = '/';
       }
     });
 
-    // Delayed fallback: give the PKCE exchange 2s to complete so provider_token is populated
+    // Delayed fallback: give PKCE exchange 2s to complete
     setTimeout(async () => {
       if (_handled) return;
       const { data: { session } } = await supabase.auth.getSession();
@@ -76,10 +98,13 @@
       }
     }, 2000);
 
-    // Hard safety net: if still stuck after 12s, go to credentials anyway
+    // Hard safety net: if nothing happens in 15s, go to credentials
     setTimeout(() => {
-      if (!_handled) location.href = '/admin/credentials.html';
-    }, 12000);
+      if (!_handled) {
+        _handled = true;
+        location.href = '/admin/credentials.html';
+      }
+    }, 15000);
   </script>
 </body>
 </html>
