@@ -341,15 +341,17 @@ export async function getWeeklyComparison(clientId) {
   const weekStart2 = new Date(now - 14 * 86400000);
 
   const [curResult, prevResult, intResult, dncResult] = await Promise.all([
-    // Current week sends + replies
+    // Current week sends + replies — only status='sent' (sent_at has DEFAULT now() at insert)
     supabase.from('outreach_log')
       .select('replied, channel')
       .eq('client_id', clientId)
+      .eq('status', 'sent')
       .gte('sent_at', weekStart.toISOString()),
     // Previous week
     supabase.from('outreach_log')
       .select('replied')
       .eq('client_id', clientId)
+      .eq('status', 'sent')
       .gte('sent_at', weekStart2.toISOString())
       .lt('sent_at', weekStart.toISOString()),
     // Interested replies this week
