@@ -82,6 +82,33 @@ export async function updateRun(sb: ReturnType<typeof getAdminClient>, runId: st
   if (error) console.error('[updateRun]', error.message);
 }
 
+// ─── Gmail token refresh ─────────────────────────────────────
+// Uses GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET secrets + stored refresh token
+// Returns new access token or null on failure
+export async function refreshGmailToken(refreshToken: string): Promise<string | null> {
+  const clientId     = Deno.env.get('GOOGLE_CLIENT_ID');
+  const clientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET');
+  if (!clientId || !clientSecret || !refreshToken) return null;
+
+  const r = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id:     clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type:    'refresh_token'
+    }).toString()
+  });
+  if (!r.ok) {
+    const errBody = await r.text().catch(() => '');
+    console.error('[refreshGmailToken] Failed:', r.status, errBody.slice(0, 120));
+    return null;
+  }
+  const data = await r.json() as { access_token?: string };
+  return data.access_token ?? null;
+}
+
 // ─── Error signature (for error_library lookup) ──────────────
 export function errorSignature(e: Error): string {
   const msg = e.message.toLowerCase();

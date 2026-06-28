@@ -9,7 +9,7 @@
 // Also updates leads.stage for temperature tracking
 // ============================================================
 
-import { getAdminClient, callAI, callAIQuality, ok, err, CORS } from '../_shared/helpers.ts';
+import { getAdminClient, callAI, callAIQuality, ok, err, CORS, refreshGmailToken } from '../_shared/helpers.ts';
 
 const CATEGORIES = ['INTERESTED', 'QUESTION', 'OBJECTION', 'NOT_INTERESTED', 'OUT_OF_OFFICE', 'UNSUBSCRIBE'] as const;
 type Category = typeof CATEGORIES[number];
@@ -42,18 +42,39 @@ async function processClientReplies(
   client: Record<string, unknown>
 ): Promise<number> {
   const clientId = client.id as string;
-  const oauthToken = client.gmail_access as string;
+  let oauthToken = client.gmail_access as string;
   if (!oauthToken) return 0;
 
   const query = encodeURIComponent('is:unread in:inbox newer_than:2d');
-  const listRes = await fetch(
+  let listRes = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${query}&maxResults=50`,
     { headers: { Authorization: `Bearer ${oauthToken}` } }
   );
 
+  // ── Auto-refresh on 401 ──────────────────────────────────────
   if (listRes.status === 401) {
-    console.error('[reply-classifier] Gmail token expired for client', clientId);
-    return 0;
+    console.log('[reply-classifier] Access token expired — attempting refresh for', clientId);
+    const refreshToken = client.gmail_refresh as string;
+    const newToken = await refreshGmailToken(refreshToken);
+    if (!newToken) {
+      console.error('[reply-classifier] Token refresh failed for', clientId);
+      return 0;
+    }
+    // Store the fresh token back in DB
+    await sb.from('clients').update({
+      gmail_access:         newToken,
+      gmail_token_saved_at: new Date().toISOString()
+    }).eq('id', clientId);
+    oauthToken = newToken;
+    // Retry the listing with the new token
+    listRes = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${query}&maxResults=50`,
+      { headers: { Authorization: `Bearer ${oauthToken}` } }
+    );
+    if (!listRes.ok) {
+      console.error('[reply-classifier] Still failing after refresh:', listRes.status);
+      return 0;
+    }
   }
   if (!listRes.ok) return 0;
 
