@@ -9,81 +9,308 @@
   <link rel="modulepreload" href="/shared/auth.js">
   <link rel="modulepreload" href="/shared/ui.js">
   <link rel="modulepreload" href="/shared/db.js">
-  <link rel="modulepreload" href="/shared/api.js">
   <link rel="stylesheet" href="/shared/attoleads-theme.css">
 </head>
 <body>
 <div id="app">Loading…</div>
 
 <script type="module">
-  import { injectLeadFynTheme } from '/shared/ui.js';
-  injectLeadFynTheme();
+import { injectLeadFynTheme } from '/shared/ui.js';
+injectLeadFynTheme();
 import { requireAuth, getClientId } from '/shared/auth.js';
 import { adminNav, injectSharedCSS, toast, channelBadge } from '/shared/ui.js';
-import { getManualQueue, updateQueueItemStatus, getLeads, getTodaySendCount } from '/shared/db.js';
-import { getClient } from '/shared/db.js';
+import { getManualQueue, updateQueueItemStatus, getLeads, getTodaySendCount, getClient } from '/shared/db.js';
 
 injectSharedCSS();
 const auth = await requireAuth('admin');
 const clientId = await getClientId();
+
+const SUPA = 'https://ndwvsrtyjnaddrifafqk.supabase.co';
+const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kd3ZzcnR5am5hZGRyaWZhZnFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4ODMxMDgsImV4cCI6MjA5MzQ1OTEwOH0.7XoOKB74DGiXac3cfSSiyvREuWZ7qbQ2QbxE6d1rnlM';
+const FN = `${SUPA}/functions/v1`;
 
 document.getElementById('app').innerHTML = `
   ${adminNav('Outreach')}
   <main class="main">
     <div class="page-header">
       <h1 class="page-title">Outreach Hub</h1>
-      <p class="page-sub">Unified 10-channel view · Manual DM queue · Daily send status</p>
+      <p class="page-sub">Unified view · Approve emails · Daily send status</p>
     </div>
     <div class="page-body">
       <!-- Daily cap bar -->
       <div class="card" style="margin-bottom:16px;padding:16px" id="capCard">Loading…</div>
 
       <!-- Tabs -->
-      <div style="display:flex;gap:8px;margin-bottom:16px">
-        <button class="btn btn-primary" id="tabDM" onclick="setTab('dm')">
+      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="tabEmail" onclick="setTab('email')">
+          📧 Email Queue <span id="emailCount" class="count-badge">…</span>
+        </button>
+        <button class="btn" id="tabDM" onclick="setTab('dm')">
           Manual DM Queue <span id="dmCount" class="count-badge">…</span>
         </button>
-        <button class="btn" id="tabAll" onclick="setTab('all')">All Leads · Channels</button>
+        <button class="btn" id="tabAll" onclick="setTab('all')">All Leads</button>
       </div>
 
       <div id="tabContent">Loading…</div>
     </div>
-  </main>`;
+  </main>
 
+  <!-- Email preview modal -->
+  <div id="emailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;overflow:auto;padding:24px">
+    <div style="max-width:680px;margin:auto;background:var(--color-bg);border-radius:16px;padding:28px;border:1px solid var(--color-border)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+        <h3 id="modalTitle" style="margin:0;font-size:16px"></h3>
+        <button onclick="closeModal()" class="btn" style="font-size:18px;padding:4px 10px">✕</button>
+      </div>
+      <div style="background:var(--color-surface);border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px">
+        <div><strong>To:</strong> <span id="modalTo"></span></div>
+        <div><strong>Subject:</strong> <span id="modalSubject"></span></div>
+      </div>
+      <div id="modalBody" style="font-size:13px;line-height:1.7;white-space:pre-wrap;max-height:400px;overflow-y:auto;background:var(--color-surface);border-radius:8px;padding:16px;margin-bottom:16px"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="closeModal()" class="btn">Close</button>
+        <button id="modalSendBtn" class="btn btn-success" style="font-weight:700">✈️ Send This Email</button>
+      </div>
+    </div>
+  </div>`;
+
+// ── Load all data ─────────────────────────────────────────────
 const [dmQueue, client, allLeads, todaySent] = await Promise.all([
   getManualQueue(clientId),
-  (await import('/shared/db.js')).getClient(clientId),
+  getClient(clientId),
   getLeads(clientId, { qualified: true }),
   getTodaySendCount(clientId)
 ]);
 
+// Load email queue (scheduled, due today or overdue)
+const emailQueueRes = await fetch(
+  `${SUPA}/rest/v1/outreach_log?client_id=eq.${clientId}&status=eq.scheduled&channel=eq.email&follow_up_seq=eq.0&select=id,lead_id,subject,body,scheduled_at,leads(business_name,email,city,state,niche,score,demo_url)&order=scheduled_at.asc`,
+  { headers: { apikey: ANON, Authorization: `Bearer ${ANON}` } }
+);
+let emailQueue = await emailQueueRes.json();
+if (!Array.isArray(emailQueue)) emailQueue = [];
+
+// ── Daily cap bar ─────────────────────────────────────────────
 const cap = client.daily_email_cap ?? 20;
 const pct = Math.min(100, (todaySent / cap) * 100);
 const capColor = pct >= 100 ? 'var(--color-danger)' : pct >= 80 ? 'var(--color-warning)' : 'var(--color-success)';
 
 document.getElementById('capCard').innerHTML = `
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-    <strong style="font-size:14px">Daily Email Cap</strong>
-    <span style="font-size:13px;color:var(--color-text-muted)">${todaySent}/${cap} sends today</span>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+    <div>
+      <strong style="font-size:14px">Daily Email Cap</strong>
+      <span style="font-size:12px;color:var(--color-text-muted);margin-left:12px">Sending from: <strong>Sales@attoleads.com</strong></span>
+    </div>
+    <span style="font-size:13px;color:${capColor};font-weight:700">${todaySent}/${cap} sent today</span>
   </div>
-  <div style="background:var(--color-border);border-radius:6px;height:10px">
+  <div style="background:var(--color-border);border-radius:6px;height:8px">
     <div style="background:${capColor};width:${pct}%;height:100%;border-radius:6px;transition:width .5s"></div>
   </div>
   <div style="font-size:12px;color:var(--color-text-muted);margin-top:6px">
-    Priority order: FU3 → FU2 → FU1 → new outreach · Resets at midnight
+    ${todaySent === 0 ? '✅ No emails sent yet today — approve below to send' : `${cap - todaySent} sends remaining · Resets at midnight UTC`}
   </div>`;
 
+document.getElementById('emailCount').textContent = emailQueue.length;
 document.getElementById('dmCount').textContent = dmQueue.length;
 
-let activeTab = 'dm';
+// ── Tab switching ─────────────────────────────────────────────
+let activeTab = 'email';
 window.setTab = function(tab) {
   activeTab = tab;
-  document.getElementById('tabDM').className  = tab === 'dm'  ? 'btn btn-primary' : 'btn';
-  document.getElementById('tabAll').className = tab === 'all' ? 'btn btn-primary' : 'btn';
-  tab === 'dm' ? renderDMQueue() : renderAllLeads();
+  document.getElementById('tabEmail').className = tab === 'email' ? 'btn btn-primary' : 'btn';
+  document.getElementById('tabDM').className    = tab === 'dm'    ? 'btn btn-primary' : 'btn';
+  document.getElementById('tabAll').className   = tab === 'all'   ? 'btn btn-primary' : 'btn';
+  if (tab === 'email') renderEmailQueue();
+  else if (tab === 'dm') renderDMQueue();
+  else renderAllLeads();
 };
 
-// ── DM QUEUE (Human Touchpoint #3) ──────────────────────────
+// ── EMAIL QUEUE TAB ────────────────────────────────────────────
+let currentModalId = null;
+
+function renderEmailQueue() {
+  const el = document.getElementById('tabContent');
+
+  if (emailQueue.length === 0) {
+    el.innerHTML = `
+      <div style="text-align:center;padding:60px;color:var(--color-text-muted)">
+        <div style="font-size:40px;margin-bottom:12px">✅</div>
+        <div style="font-size:16px;font-weight:600">No emails pending approval</div>
+        <div style="font-size:14px;margin-top:4px">Run the pipeline to generate new leads and outreach</div>
+      </div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+      <div>
+        <span style="font-weight:700;font-size:15px">${emailQueue.length} email${emailQueue.length !== 1 ? 's' : ''} ready to send</span>
+        <span style="font-size:13px;color:var(--color-text-muted);margin-left:8px">via Sales@attoleads.com</span>
+      </div>
+      <button class="btn btn-success" onclick="sendAll()" style="font-weight:700;font-size:14px;padding:10px 20px">
+        ✈️ Approve & Send All (${emailQueue.length})
+      </button>
+    </div>
+
+    ${emailQueue.map((row, i) => {
+      const lead = row.leads || {};
+      const subject = row.subject || '(no subject)';
+      const bodyPreview = (row.body || '').slice(0, 180).replace(/\n/g, ' ');
+      const hasDemo = (row.body || '').includes('vercel.app');
+
+      return `
+        <div class="email-card" id="eq-${row.id}">
+          <div class="eq-header">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;font-size:15px;margin-bottom:2px">${lead.business_name || 'Business'}</div>
+              <div style="font-size:12px;color:var(--color-text-muted)">${lead.city || ''}, ${lead.state || ''} · ${lead.niche || ''} · Score ${lead.score || '?'}/10</div>
+              <div style="font-size:12px;margin-top:4px">
+                <span style="color:var(--color-text-muted)">To:</span>
+                <strong>${lead.email || '—'}</strong>
+                ${hasDemo ? '<span style="margin-left:8px;color:var(--color-success);font-size:11px">🌐 Demo site included</span>' : ''}
+              </div>
+              <div style="font-size:13px;font-weight:600;margin-top:6px;color:var(--color-text)">${subject}</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;margin-left:12px;flex-shrink:0">
+              <button class="btn btn-success" onclick="sendOne('${row.id}', '${lead.business_name?.replace(/'/g,"\\'")||''}')" style="font-size:12px;padding:7px 14px;font-weight:600">
+                ✈️ Send
+              </button>
+              <button class="btn" onclick="previewEmail(${i})" style="font-size:12px;padding:7px 14px">
+                👁 Preview
+              </button>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--color-text-muted);margin-top:10px;line-height:1.5;border-top:1px solid var(--color-border);padding-top:10px">
+            ${bodyPreview}…
+          </div>
+          ${lead.demo_url ? `
+          <div style="margin-top:10px">
+            <a href="${lead.demo_url}" target="_blank" class="btn" style="font-size:12px;padding:6px 12px;text-decoration:none">
+              🌐 Preview demo site
+            </a>
+          </div>` : ''}
+        </div>`;
+    }).join('')}`;
+}
+
+// ── Preview modal ─────────────────────────────────────────────
+window.previewEmail = function(idx) {
+  const row = emailQueue[idx];
+  const lead = row.leads || {};
+  currentModalId = row.id;
+  document.getElementById('modalTitle').textContent = lead.business_name || 'Email Preview';
+  document.getElementById('modalTo').textContent = lead.email || '—';
+  document.getElementById('modalSubject').textContent = row.subject || '(no subject)';
+  document.getElementById('modalBody').textContent = row.body || '';
+  document.getElementById('modalSendBtn').onclick = () => { closeModal(); sendOne(row.id, lead.business_name); };
+  document.getElementById('emailModal').style.display = 'block';
+};
+
+window.closeModal = function() {
+  document.getElementById('emailModal').style.display = 'none';
+};
+
+// ── Send one email ─────────────────────────────────────────────
+window.sendOne = async function(outreachId, bizName) {
+  const btn = document.querySelector(`#eq-${outreachId} .btn-success`);
+  if (btn) { btn.textContent = '⏳ Sending…'; btn.disabled = true; }
+
+  try {
+    // Trigger follow-up-engine — it will pick up this specific scheduled email
+    // First ensure scheduled_at is now so it gets picked up immediately
+    await fetch(`${SUPA}/rest/v1/outreach_log?id=eq.${outreachId}`, {
+      method: 'PATCH',
+      headers: { apikey: ANON, Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scheduled_at: new Date().toISOString() })
+    });
+
+    // Trigger follow-up engine to send it
+    const res = await fetch(`${FN}/follow-up-engine`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}` },
+      body: JSON.stringify({ outreach_id: outreachId })
+    });
+    const data = await res.json().catch(() => ({}));
+
+    // Check if actually sent by polling the status
+    await new Promise(r => setTimeout(r, 2000));
+    const check = await (await fetch(
+      `${SUPA}/rest/v1/outreach_log?id=eq.${outreachId}&select=status`,
+      { headers: { apikey: ANON, Authorization: `Bearer ${ANON}` } }
+    )).json();
+
+    const newStatus = check[0]?.status;
+    if (newStatus === 'sent') {
+      toast(`✅ Sent to ${bizName}!`, 'success');
+      // Remove from queue
+      emailQueue = emailQueue.filter(r => r.id !== outreachId);
+      document.getElementById(`eq-${outreachId}`)?.remove();
+      document.getElementById('emailCount').textContent = emailQueue.length;
+      if (emailQueue.length === 0) renderEmailQueue();
+    } else if (newStatus === 'needs_sender') {
+      toast(`⚠️ Gmail not connected — reconnect in Credentials`, 'error');
+      if (btn) { btn.textContent = '⚠️ No sender'; btn.disabled = false; }
+    } else {
+      toast(`Email queued — follow-up engine will send within the hour`, 'info');
+      if (btn) { btn.textContent = '⏰ Queued'; btn.disabled = false; }
+    }
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+    if (btn) { btn.textContent = '✈️ Send'; btn.disabled = false; }
+  }
+};
+
+// ── Send all ──────────────────────────────────────────────────
+window.sendAll = async function() {
+  if (emailQueue.length === 0) return;
+  const btn = document.querySelector('[onclick="sendAll()"]');
+  if (btn) { btn.textContent = '⏳ Sending all…'; btn.disabled = true; }
+
+  try {
+    // Make all due now
+    const ids = emailQueue.map(r => r.id);
+    for (const id of ids) {
+      await fetch(`${SUPA}/rest/v1/outreach_log?id=eq.${id}`, {
+        method: 'PATCH',
+        headers: { apikey: ANON, Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scheduled_at: new Date().toISOString() })
+      });
+    }
+
+    // Fire follow-up engine
+    const res = await fetch(`${FN}/follow-up-engine`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}` },
+      body: '{}'
+    });
+    const data = await res.json().catch(() => ({}));
+
+    // Check results
+    const totalSent = data.results?.reduce((sum, r) => sum + (r.sent || 0), 0) ?? 0;
+    const totalSkipped = data.results?.reduce((sum, r) => sum + (r.skipped || 0), 0) ?? 0;
+
+    if (totalSent > 0) {
+      toast(`✅ ${totalSent} email${totalSent !== 1 ? 's' : ''} sent from Sales@attoleads.com!`, 'success');
+      // Reload queue
+      emailQueue = [];
+      document.getElementById('emailCount').textContent = 0;
+      renderEmailQueue();
+    } else if (data.results?.[0]?.reason === 'daily cap reached') {
+      toast('Daily email cap reached — resets at midnight', 'error');
+    } else if (totalSkipped > 0 && totalSent === 0) {
+      toast('⚠️ Gmail not connected or token expired — go to Credentials to reconnect', 'error');
+    } else {
+      toast(`Queued — follow-up engine processing. Check back in a minute.`, 'info');
+    }
+
+    if (btn) { btn.textContent = `✈️ Approve & Send All (${emailQueue.length})`; btn.disabled = false; }
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+    if (btn) { btn.textContent = `✈️ Approve & Send All (${emailQueue.length})`; btn.disabled = false; }
+  }
+};
+
+// ── DM QUEUE ──────────────────────────────────────────────────
 let queue = [...dmQueue];
 
 function renderDMQueue() {
@@ -93,7 +320,7 @@ function renderDMQueue() {
       <div style="text-align:center;padding:60px;color:var(--color-text-muted)">
         <div style="font-size:40px;margin-bottom:12px">🎉</div>
         <div style="font-size:16px;font-weight:600">All caught up!</div>
-        <div style="font-size:14px;margin-top:4px">Every lead with a missing email has been contacted via DM</div>
+        <div style="font-size:14px;margin-top:4px">Every lead has been contacted via DM</div>
       </div>`;
     return;
   }
@@ -107,16 +334,14 @@ function renderDMQueue() {
       const platformBtns = Object.entries(channels).map(([platform, url]) => {
         const icons = {facebook:'📘',instagram:'📷',linkedin:'💼',yelp:'⭐',whatsapp:'💬'};
         const icon = icons[platform] ?? '🔗';
-        return url ? `<a href="${url}" target="_blank" class="btn" style="font-size:12px;padding:6px 12px;text-decoration:none">
-          ${icon} Open ${platform.charAt(0).toUpperCase()+platform.slice(1)}
-        </a>` : '';
+        return url ? `<a href="${url}" target="_blank" class="btn" style="font-size:12px;padding:6px 12px;text-decoration:none">${icon} Open ${platform.charAt(0).toUpperCase()+platform.slice(1)}</a>` : '';
       }).filter(Boolean).join('');
 
       return `<div class="dm-card" id="dm-${item.id}">
         <div class="dm-header">
           <div>
             <span style="font-weight:700;font-size:15px">${item.leads?.business_name ?? 'Business'}</span>
-            <span style="font-size:12px;color:var(--color-text-muted);margin-left:8px">${item.leads?.city ?? ''} · ${item.leads?.niche ?? ''} · Score: ${item.leads?.score ?? '?'}/10</span>
+            <span style="font-size:12px;color:var(--color-text-muted);margin-left:8px">${item.leads?.city ?? ''} · Score: ${item.leads?.score ?? '?'}/10</span>
           </div>
           <div style="display:flex;gap:8px;align-items:center">
             <button class="btn btn-success" style="font-size:13px" onclick="markDMSent('${item.id}')">✓ Sent</button>
@@ -149,33 +374,51 @@ window.skipDM = async function(itemId) {
   if (queue.length === 0) renderDMQueue();
 };
 
-// ── ALL LEADS with channel view ──────────────────────────────
+// ── ALL LEADS ─────────────────────────────────────────────────
 function renderAllLeads() {
   const el = document.getElementById('tabContent');
   el.innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px">
       ${allLeads.map(l => `
         <div class="card" style="padding:16px">
           <div style="font-weight:600;margin-bottom:4px">${l.business_name}</div>
           <div style="font-size:12px;color:var(--color-text-muted);margin-bottom:10px">${l.city}, ${l.state} · ${l.niche} · Score ${l.score}/10</div>
           <div style="margin-bottom:8px">${channelBadge(l.contact_channels ?? [])}</div>
           <div style="font-size:12px;color:var(--color-text-muted)">
-            ${l.email ? `✉️ ${l.email} (${l.email_confidence ?? '?'})` : '📧 No email found'}
+            ${l.email ? `✉️ ${l.email}` : '📧 No email found'}
             ${l.do_not_contact ? ' · 🚫 DNC' : ''}
           </div>
+          ${l.demo_url ? `<div style="margin-top:8px"><a href="${l.demo_url}" target="_blank" class="btn" style="font-size:11px;padding:5px 10px;text-decoration:none">🌐 View demo</a></div>` : ''}
         </div>`).join('')}
     </div>`;
 }
 
-renderDMQueue();
+// Start on email queue tab
+renderEmailQueue();
 </script>
 
 <style>
-  .count-badge { background:var(--color-accent);color:#fff;font-size:11px;font-weight:700;
-                 padding:2px 7px;border-radius:10px;margin-left:4px; }
-  .dm-card { background:var(--color-bg);border:1px solid var(--color-border);border-radius:12px;
-             padding:20px;margin-bottom:12px;box-shadow:var(--shadow); }
-  .dm-header { display:flex;justify-content:space-between;align-items:flex-start; }
+  .count-badge {
+    background: var(--color-accent); color: #fff;
+    font-size: 11px; font-weight: 700;
+    padding: 2px 7px; border-radius: 10px; margin-left: 4px;
+  }
+  .email-card {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+    transition: border-color .2s;
+  }
+  .email-card:hover { border-color: var(--color-accent); }
+  .eq-header { display: flex; justify-content: space-between; align-items: flex-start; }
+  .dm-card {
+    background: var(--color-bg); border: 1px solid var(--color-border);
+    border-radius: 12px; padding: 20px; margin-bottom: 12px; box-shadow: var(--shadow);
+  }
+  .dm-header { display: flex; justify-content: space-between; align-items: flex-start; }
 </style>
 </body>
 </html>
