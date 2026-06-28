@@ -374,90 +374,81 @@ Use this intel from the first search — start with the query patterns that work
       } catch (e) { return JSON.stringify({ error: String(e) }); }
     };
 
-    // ── Apollo replacement: multi-source contact finder ──────────
+    // ── Fast contact finder — max 2 page fetches + instant pattern fallback ──
     const findContact = async (input: Record<string,unknown>): Promise<string> => {
       const name    = input.business_name as string;
       const website = input.website as string | undefined;
       const bCity   = input.city    as string;
-      const bNiche  = input.niche   as string;
 
-      // Regex helpers
       const emailRe = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
       const phoneRe = /(?:\+?1[\s\-.]?)?\(?\d{3}\)?[\s\-.]?\d{3}[\s\-.]?\d{4}/g;
+      const BAD_EMAIL = /example|domain|email@|sentry|wix|\.png|\.jpg|noreply|support@google|schema/i;
 
-      const extractFromText = (text: string) => {
-        const emails = [...new Set((text.match(emailRe) || [])
-          .filter(e => !e.includes('example') && !e.includes('domain') && !e.includes('email@') && !e.includes('sentry') && !e.includes('wix') && !e.endsWith('.png') && !e.endsWith('.jpg')))];
-        const phones = [...new Set((text.match(phoneRe) || []).map(p => p.trim()))];
-        return { emails, phones };
-      };
-
-      const safeFetch = async (url: string): Promise<string> => {
+      const quickFetch = async (url: string): Promise<string> => {
         try {
           const r = await fetch(url, {
             headers: { "User-Agent": "Mozilla/5.0 (compatible; AutoFlowBot/1.0)" },
-            signal: AbortSignal.timeout(8000)
+            signal: AbortSignal.timeout(4000)   // 4s max per page
           });
           if (!r.ok) return "";
           const html = await r.text();
-          return html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().substring(0, 6000);
+          return html.replace(/<script[\s\S]*?<\/script>/gi, "")
+                     .replace(/<style[\s\S]*?<\/style>/gi, "")
+                     .replace(/<[^>]+>/g, " ")
+                     .replace(/\s+/g, " ").trim().substring(0, 4000);
         } catch (_) { return ""; }
       };
+
+      const extract = (text: string) => ({
+        emails: [...new Set((text.match(emailRe) || []).filter(e => !BAD_EMAIL.test(e)))],
+        phones: [...new Set((text.match(phoneRe) || []).map(p => p.trim()))]
+      });
 
       let email: string | null = null;
       let phone: string | null = null;
       let ownerName: string | null = null;
       const foundVia: string[] = [];
 
-      // ── Step 1: Scrape website pages ─────────────────────────
+      // Check homepage only first — fast path
       if (website) {
         const base = website.replace(/\/$/, "");
-        const pagesToCheck = [base, `${base}/contact`, `${base}/contact-us`, `${base}/about`, `${base}/team`];
-        for (const pageUrl of pagesToCheck) {
-          const text = await safeFetch(pageUrl);
-          if (!text) continue;
-          const { emails, phones } = extractFromText(text);
-          if (!email && emails.length) { email = emails[0]; foundVia.push(`website (${pageUrl})`); }
-          if (!phone && phones.length) { phone = phones[0]; foundVia.push(`website-phone`); }
-          if (email && phone) break;
+        const homeText = await quickFetch(base);
+        const { emails: he, phones: hp } = extract(homeText);
+        if (he.length) { email = he[0]; foundVia.push("homepage"); }
+        if (hp.length) { phone = hp[0]; foundVia.push("homepage-phone"); }
+
+        // Owner from homepage too
+        const ownerRe = /(?:owner|founder|ceo|dr\.|president)[:\s,]+([A-Z][a-z]+ [A-Z][a-z]+)/gi;
+        const om = ownerRe.exec(homeText);
+        if (om) { ownerName = om[1]; }
+
+        // Only fetch /contact if homepage had no email
+        if (!email) {
+          const contactText = await quickFetch(`${base}/contact`);
+          const { emails: ce, phones: cp } = extract(contactText);
+          if (ce.length) { email = ce[0]; foundVia.push("contact-page"); }
+          if (!phone && cp.length) { phone = cp[0]; foundVia.push("contact-phone"); }
         }
-
-        // ── Step 2: Owner name — look for "owner", "founder", "Dr.", "CEO" on About page ──
-        if (!ownerName) {
-          const aboutText = await safeFetch(`${base}/about`);
-          const ownerRe = /(?:owner|founder|ceo|president|dr\.|dentist|principal)[:\s,]+([A-Z][a-z]+ [A-Z][a-z]+)/gi;
-          const ownerMatch = ownerRe.exec(aboutText);
-          if (ownerMatch) { ownerName = ownerMatch[1]; foundVia.push("about-page"); }
-        }
       }
 
-      // ── Step 3: Google Maps / search for phone + owner ────────
-      if (!email || !phone) {
-        const mapsQuery = `${name} ${bCity} contact email phone`;
-        const searchText = await safeFetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(mapsQuery)}&kl=us-en`);
-        const { emails: se, phones: sp } = extractFromText(searchText);
-        if (!email && se.length)  { email = se[0]; foundVia.push("search-engine"); }
-        if (!phone && sp.length)  { phone = sp[0]; foundVia.push("search-phone"); }
-      }
-
-      // ── Step 4: LinkedIn for owner name ──────────────────────
-      if (!ownerName) {
-        const liQuery = `${bNiche} owner "${bCity}" site:linkedin.com`;
-        const liText  = await safeFetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(liQuery)}&kl=us-en`);
-        // Extract name from LinkedIn title pattern: "Name - Title at Company | LinkedIn"
-        const liRe = /([A-Z][a-z]+ [A-Z][a-z]+)\s*[-–|]\s*(?:owner|founder|ceo|dentist|principal|president)/gi;
-        const liMatch = liRe.exec(liText);
-        if (liMatch) { ownerName = liMatch[1]; foundVia.push("linkedin"); }
-      }
-
-      // ── Step 5: Common email pattern fallback ─────────────────
+      // Instant email pattern fallback — no extra HTTP request needed
       let emailPatterns: string[] = [];
       if (!email && website) {
         try {
           const domain = new URL(website).hostname.replace(/^www\./, "");
-          emailPatterns = [`info@${domain}`, `contact@${domain}`, `hello@${domain}`, `admin@${domain}`];
-          // We can't verify without sending — flag these as "guessed" for Claude to note
+          emailPatterns = [`info@${domain}`, `contact@${domain}`];
         } catch (_) { /* ignore */ }
+      }
+
+      // If still no email AND no website, try one fast DDG search
+      if (!email && !emailPatterns.length) {
+        try {
+          const q = encodeURIComponent(`${name} ${bCity} email contact`);
+          const ddgText = await quickFetch(`https://html.duckduckgo.com/html/?q=${q}&kl=us-en`);
+          const { emails: se, phones: sp } = extract(ddgText);
+          if (se.length) { email = se[0]; foundVia.push("web-search"); }
+          if (!phone && sp.length) { phone = sp[0]; foundVia.push("web-search-phone"); }
+        } catch (_) { /* skip */ }
       }
 
       return JSON.stringify({
@@ -469,8 +460,8 @@ Use this intel from the first search — start with the query patterns that work
         note: email
           ? `✅ Real email found via ${foundVia.join(", ")}`
           : emailPatterns.length
-            ? `⚠️ No email found. Likely patterns: ${emailPatterns.slice(0,2).join(", ")} — use the most business-appropriate one`
-            : "❌ No email found — LinkedIn or cold-call outreach recommended"
+            ? `⚠️ No email found. Use: ${emailPatterns[0]} — flag in score_reason`
+            : "❌ No email — save with channels:['sms'] or channels:['linkedin']"
       });
     };
 
