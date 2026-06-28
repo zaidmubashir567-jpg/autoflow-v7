@@ -55,21 +55,42 @@ document.getElementById('app').innerHTML = `
     </div>
   </main>
 
-  <!-- Email preview modal -->
-  <div id="emailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;overflow:auto;padding:24px">
-    <div style="max-width:680px;margin:auto;background:var(--color-bg);border-radius:16px;padding:28px;border:1px solid var(--color-border)">
+  <!-- Email preview + edit modal -->
+  <div id="emailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;overflow:auto;padding:20px">
+    <div style="max-width:700px;margin:auto;background:var(--color-bg);border-radius:16px;padding:28px;border:1px solid var(--color-border);box-shadow:0 20px 60px rgba(0,0,0,.5)">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
-        <h3 id="modalTitle" style="margin:0;font-size:16px"></h3>
-        <button onclick="closeModal()" class="btn" style="font-size:18px;padding:4px 10px">✕</button>
+        <div>
+          <h3 id="modalTitle" style="margin:0;font-size:16px;font-weight:700"></h3>
+          <div style="font-size:12px;color:var(--color-text-muted);margin-top:4px">Edit the email below before sending</div>
+        </div>
+        <button onclick="closeModal()" class="btn" style="font-size:18px;padding:4px 10px;flex-shrink:0">✕</button>
       </div>
-      <div style="background:var(--color-surface);border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px">
-        <div><strong>To:</strong> <span id="modalTo"></span></div>
-        <div><strong>Subject:</strong> <span id="modalSubject"></span></div>
+
+      <!-- To / Subject (editable) -->
+      <div style="background:var(--color-surface);border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px;display:grid;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="color:var(--color-text-muted);width:60px;flex-shrink:0">To:</span>
+          <span id="modalTo" style="font-weight:600"></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="color:var(--color-text-muted);width:60px;flex-shrink:0">Subject:</span>
+          <input id="modalSubject" style="flex:1;background:var(--color-bg);border:1px solid var(--color-border);border-radius:6px;padding:6px 10px;font-size:13px;color:var(--color-text);font-family:inherit" />
+        </div>
       </div>
-      <div id="modalBody" style="font-size:13px;line-height:1.7;white-space:pre-wrap;max-height:400px;overflow-y:auto;background:var(--color-surface);border-radius:8px;padding:16px;margin-bottom:16px"></div>
-      <div style="display:flex;gap:10px;justify-content:flex-end">
-        <button onclick="closeModal()" class="btn">Close</button>
-        <button id="modalSendBtn" class="btn btn-success" style="font-weight:700">✈️ Send This Email</button>
+
+      <!-- Editable body -->
+      <textarea id="modalBody"
+        style="width:100%;height:340px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;padding:14px;font-size:13px;line-height:1.7;color:var(--color-text);font-family:inherit;resize:vertical;box-sizing:border-box;margin-bottom:10px"
+        placeholder="Email body…"></textarea>
+
+      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:14px">
+        ✏️ Edits are saved automatically when you click Send · Links in the email will be clickable for the recipient · attoleads.com footer is added automatically
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+        <button onclick="closeModal()" class="btn">Cancel</button>
+        <button onclick="saveEdits()" class="btn" style="background:var(--color-surface)">💾 Save edits only</button>
+        <button id="modalSendBtn" class="btn btn-success" style="font-weight:700">✈️ Save & Send</button>
       </div>
     </div>
   </div>`;
@@ -193,21 +214,54 @@ function renderEmailQueue() {
     }).join('')}`;
 }
 
-// ── Preview modal ─────────────────────────────────────────────
+// ── Preview / Edit modal ──────────────────────────────────────
+let currentModalIdx = null;
+
 window.previewEmail = function(idx) {
   const row = emailQueue[idx];
   const lead = row.leads || {};
-  currentModalId = row.id;
-  document.getElementById('modalTitle').textContent = lead.business_name || 'Email Preview';
-  document.getElementById('modalTo').textContent = lead.email || '—';
-  document.getElementById('modalSubject').textContent = row.subject || '(no subject)';
-  document.getElementById('modalBody').textContent = row.body || '';
-  document.getElementById('modalSendBtn').onclick = () => { closeModal(); sendOne(row.id, lead.business_name); };
+  currentModalId  = row.id;
+  currentModalIdx = idx;
+
+  document.getElementById('modalTitle').textContent   = lead.business_name || 'Email Preview';
+  document.getElementById('modalTo').textContent      = lead.email || '—';
+  document.getElementById('modalSubject').value       = row.subject || '';
+  document.getElementById('modalBody').value          = row.body || '';
+  document.getElementById('modalSendBtn').onclick     = () => saveAndSend(idx);
   document.getElementById('emailModal').style.display = 'block';
 };
 
 window.closeModal = function() {
   document.getElementById('emailModal').style.display = 'none';
+};
+
+// Save edits to DB without sending
+window.saveEdits = async function() {
+  if (!currentModalId) return;
+  const newSubject = document.getElementById('modalSubject').value;
+  const newBody    = document.getElementById('modalBody').value;
+
+  await fetch(`${SUPA}/rest/v1/outreach_log?id=eq.${currentModalId}`, {
+    method: 'PATCH',
+    headers: { apikey: ANON, Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subject: newSubject, body: newBody })
+  });
+
+  // Update in-memory queue too
+  if (currentModalIdx !== null) {
+    emailQueue[currentModalIdx].subject = newSubject;
+    emailQueue[currentModalIdx].body    = newBody;
+  }
+  toast('✅ Edits saved', 'success');
+};
+
+// Save edits then send
+window.saveAndSend = async function(idx) {
+  await saveEdits();
+  closeModal();
+  const row = emailQueue[idx];
+  const lead = row.leads || {};
+  await sendOne(row.id, lead.business_name || 'Business');
 };
 
 // ── Send one email ─────────────────────────────────────────────
