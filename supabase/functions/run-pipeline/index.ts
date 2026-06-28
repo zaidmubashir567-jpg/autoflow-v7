@@ -146,29 +146,34 @@ async function handleDiscover(body: Record<string,unknown>) {
   await sb.from("pipeline_chat").insert({ run_id, client_id, role:"claude", type:"info",
     message:`🔍 Searching for ${niche} businesses in ${city}, ${state}…` });
 
-  // Two DDG searches for variety
+  // Two DDG searches targeting actual business websites, not articles
   const [raw1, raw2] = await Promise.all([
-    ddgSearch(`${niche} ${city} ${state}`),
-    ddgSearch(`best local ${niche} near ${city} small business`),
+    ddgSearch(`${niche} ${city} ${state} contact phone`),
+    ddgSearch(`"${niche}" "${city}" small business website`),
   ]);
 
   const results1: {title:string;url:string;snippet:string}[] = JSON.parse(raw1||"[]");
   const results2: {title:string;url:string;snippet:string}[] = JSON.parse(raw2||"[]");
   const allResults = [...results1, ...results2];
 
-  // Extract business names + websites — skip directories, chains, aggregators
-  const SKIP = /yelp|yellowpages|angi|homeadvisor|thumbtack|houzz|facebook|google|bbb|angieslist|tripadvisor|wikipedia|amazon/i;
+  // Skip directories, aggregators, chains, and article/list pages
+  const SKIP_URL   = /yelp|yellowpages|angi|homeadvisor|thumbtack|houzz|facebook|google|bbb|angieslist|tripadvisor|wikipedia|amazon|indeed|linkedin|zillow|thumbtack|porch\.com|nextdoor|bark\.com/i;
+  // Article title patterns: "10 Best...", "Top 5...", "Best X in City 2024" etc.
+  const SKIP_TITLE = /^\d+\s+(best|top)|^top\s+\d+|^best\s+\w+\s+in\s|^the\s+best\s|\b202[0-9]\b|\bhow\s+to\b|\bguide\b|\breview[s]?\b|\bnear\s+me\b|\brated\b/i;
+
   const seen = new Set<string>();
   const businesses: {name:string; website:string}[] = [];
 
   for (const r of allResults) {
-    if (SKIP.test(r.url)) continue;
+    if (SKIP_URL.test(r.url)) continue;
     const hostname = (() => { try { return new URL(r.url).hostname.replace(/^www\./,""); } catch(_) { return ""; } })();
     if (!hostname || seen.has(hostname)) continue;
-    seen.add(hostname);
-    // Clean up title — strip location suffixes
+    // Clean up title — strip location suffixes first
     const name = r.title.replace(/\s*[-|–]\s*.{0,40}$/, "").replace(/\s+/g," ").trim().slice(0,60);
-    if (name.length > 3) businesses.push({ name, website: `https://${hostname}` });
+    // Skip article/list titles
+    if (name.length < 4 || SKIP_TITLE.test(name)) continue;
+    seen.add(hostname);
+    businesses.push({ name, website: `https://${hostname}` });
     if (businesses.length >= 10) break;
   }
 
