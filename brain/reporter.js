@@ -91,7 +91,7 @@ export async function getDashboardStats(clientId) {
     activeLeadsResult
   ] = await Promise.all([
     sb.from('outreach_log').select('*', { count: 'exact', head: true })
-      .eq('client_id', clientId).gte('sent_at', today.toISOString()),
+      .eq('client_id', clientId).eq('status', 'sent').gte('sent_at', today.toISOString()),
     sb.from('draft_responses').select('*', { count: 'exact', head: true })
       .eq('client_id', clientId).eq('status', 'pending_review'),
     sb.from('manual_outreach_queue').select('*', { count: 'exact', head: true })
