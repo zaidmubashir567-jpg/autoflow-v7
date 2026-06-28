@@ -324,21 +324,74 @@ window.startPipeline = async function() {
   // Subscribe to Claude chat messages for this run
   subscribeToChat(run.id);
 
-  // Trigger Edge Function
+  // ── Multi-call orchestration: discover → enrich each → finish ──
+  const EDGE = 'https://ndwvsrtyjnaddrifafqk.supabase.co/functions/v1/run-pipeline';
+  const authHeader = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${(await getSession())?.access_token}` };
+
+  const callEdge = async (payload) => {
+    const r = await fetch(EDGE, { method:'POST', headers: authHeader, body: JSON.stringify(payload) });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    return data;
+  };
+
   try {
-    const res = await fetch(`https://ndwvsrtyjnaddrifafqk.supabase.co/functions/v1/run-pipeline`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${(await getSession())?.access_token}`
-      },
-      body: JSON.stringify({ run_id: run.id, client_id: clientId, city, state, niche, auto_mode: autoMode })
+    // STEP 1 — Discover businesses (single fast call ~10s)
+    btn.textContent = 'Discovering…';
+    const discovery = await callEdge({ mode:'discover', run_id: run.id, client_id: clientId, city, state, niche });
+    const businesses = discovery.businesses || [];
+
+    if (!businesses.length) throw new Error('No businesses found — try a different city or niche');
+
+    appendChatMsg({ role:'system', type:'info', message:`🚀 Found ${businesses.length} businesses — processing one by one…`, created_at: new Date().toISOString() });
+
+    // STEP 2 — Enrich each business one at a time (separate call per business, ~15s each)
+    let savedCount = 0;
+    let totalScore = 0;
+
+    for (let i = 0; i < businesses.length; i++) {
+      const biz = businesses[i];
+      btn.textContent = `Processing ${i+1}/${businesses.length}…`;
+
+      try {
+        const result = await callEdge({
+          mode: 'enrich',
+          run_id: run.id,
+          client_id: clientId,
+          city, state, niche,
+          business_name: biz.name,
+          website: biz.website,
+        });
+
+        if (result.saved) {
+          savedCount++;
+          totalScore += result.score || 0;
+
+          // STEP 2b — Generate demo website for each saved lead
+          try {
+            await fetch('https://ndwvsrtyjnaddrifafqk.supabase.co/functions/v1/generate-site', {
+              method:'POST', headers: authHeader,
+              body: JSON.stringify({ lead_id: result.lead_id, client_id: clientId })
+            });
+          } catch(_) { /* non-critical */ }
+        }
+      } catch(enrichErr) {
+        console.warn('Enrich failed for', biz.name, enrichErr.message);
+        appendChatMsg({ role:'system', type:'warning', message:`⚠️ Skipped ${biz.name}: ${enrichErr.message}`, created_at: new Date().toISOString() });
+      }
+    }
+
+    // STEP 3 — Finish: save niche memory + mark complete
+    btn.textContent = 'Finishing…';
+    await callEdge({
+      mode: 'finish',
+      run_id: run.id,
+      client_id: clientId,
+      city, state, niche,
+      leads_saved: savedCount,
+      avg_score: savedCount > 0 ? Math.round(totalScore / savedCount) : 0,
     });
 
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message ?? 'Pipeline failed to start');
-    }
   } catch (e) {
     toast(e.message, 'error');
     await updateRun(run.id, { status: 'error', error_message: e.message });
