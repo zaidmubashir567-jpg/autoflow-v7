@@ -104,7 +104,7 @@ const [dmQueue, client, allLeads, todaySent] = await Promise.all([
 ]);
 
 // Load email queue:
-// draft = needs approval, needs_sender = Gmail disconnected (approved but failed to send)
+// draft = needs approval, needs_sender = previously failed (Gmail was disconnected)
 const emailQueueRes = await fetch(
   `${SUPA}/rest/v1/outreach_log?client_id=eq.${clientId}&status=in.(draft,needs_sender)&channel=eq.email&follow_up_seq=eq.0&select=id,lead_id,subject,body,status,scheduled_at,leads(business_name,email,city,state,niche,score,demo_url)&order=created_at.asc`,
   { headers: { apikey: ANON, Authorization: `Bearer ${ANON}` } }
@@ -112,8 +112,9 @@ const emailQueueRes = await fetch(
 let emailQueue = await emailQueueRes.json();
 if (!Array.isArray(emailQueue)) emailQueue = [];
 
-// Separate into needs_sender (Gmail broken) vs draft (needs approval)
-const needsSenderCount = emailQueue.filter(r => r.status === 'needs_sender').length;
+// Gmail connected = has access token right now
+const gmailConnected = !!client.gmail_access;
+const needsSenderIds = emailQueue.filter(r => r.status === 'needs_sender').map(r => r.id);
 
 // ── Daily cap bar ─────────────────────────────────────────────
 const cap = client.daily_email_cap ?? 20;
@@ -169,21 +170,36 @@ function renderEmailQueue() {
   const draftCount = emailQueue.filter(r => r.status === 'draft').length;
   const failedCount = emailQueue.filter(r => r.status === 'needs_sender').length;
 
+  // Build the appropriate banner based on current Gmail state
+  let gmailBanner = '';
+  if (failedCount > 0) {
+    if (gmailConnected) {
+      gmailBanner = `<div style="background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.4);border-radius:10px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-weight:700;color:#6366f1;font-size:14px">✅ Gmail reconnected — ${failedCount} email${failedCount!==1?'s':''} ready to retry</div>
+          <div style="font-size:12px;color:var(--color-text-muted);margin-top:3px">Click "Retry Failed" to resend the emails that previously failed.</div>
+        </div>
+        <button class="btn" onclick="retryFailed()" style="background:#6366f1;color:#fff;font-weight:700;font-size:13px;padding:8px 16px;white-space:nowrap">🔄 Retry Failed Emails</button>
+      </div>`;
+    } else {
+      gmailBanner = `<div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.4);border-radius:10px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-weight:700;color:#ef4444;font-size:14px">⚠️ Gmail disconnected — ${failedCount} email${failedCount!==1?'s':''} failed to send</div>
+          <div style="font-size:12px;color:var(--color-text-muted);margin-top:3px">Reconnect Gmail then come back to retry.</div>
+        </div>
+        <a href="/admin/credentials.html" class="btn" style="background:#ef4444;color:#fff;font-weight:700;text-decoration:none;font-size:13px;padding:8px 16px;white-space:nowrap">🔗 Reconnect Gmail</a>
+      </div>`;
+    }
+  }
+
   el.innerHTML = `
-    ${failedCount > 0 ? `
-    <div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.4);border-radius:10px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-      <div>
-        <div style="font-weight:700;color:#ef4444;font-size:14px">⚠️ Gmail token expired — ${failedCount} email${failedCount!==1?'s':''} failed to send</div>
-        <div style="font-size:12px;color:var(--color-text-muted);margin-top:3px">Your Gmail access token expired. Reconnect to resend these emails.</div>
-      </div>
-      <a href="/admin/credentials.html" class="btn" style="background:#ef4444;color:#fff;font-weight:700;text-decoration:none;font-size:13px;padding:8px 16px;white-space:nowrap">🔗 Reconnect Gmail</a>
-    </div>` : ''}
+    ${gmailBanner}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px">
       <div>
         <span style="font-weight:700;font-size:15px">${emailQueue.length} email${emailQueue.length !== 1 ? 's' : ''} pending</span>
-        <span style="font-size:13px;color:var(--color-text-muted);margin-left:8px">via Sales@attoleads.com · ${draftCount} need approval</span>
+        <span style="font-size:13px;color:var(--color-text-muted);margin-left:8px">via Sales@attoleads.com · ${draftCount + failedCount} ready to send</span>
       </div>
-      <button class="btn btn-success" onclick="sendAll()" style="font-weight:700;font-size:14px;padding:10px 20px" ${failedCount > 0 && draftCount === 0 ? 'disabled title="Reconnect Gmail first"' : ''}>
+      <button class="btn btn-success" onclick="sendAll()" style="font-weight:700;font-size:14px;padding:10px 20px" ${!gmailConnected && draftCount === 0 ? 'disabled title="Reconnect Gmail first"' : ''}>
         ✈️ Approve & Send All (${emailQueue.length})
       </button>
     </div>
@@ -334,7 +350,7 @@ window.sendAll = async function() {
   if (btn) { btn.textContent = `⏳ Approving ${count}…`; btn.disabled = true; }
 
   try {
-    // Approve all — set status=scheduled + scheduled_at=now in parallel
+    // Approve all (draft + needs_sender) — set status=scheduled + scheduled_at=now in parallel
     const ids = emailQueue.map(r => r.id);
     await Promise.all(ids.map(id =>
       fetch(`${SUPA}/rest/v1/outreach_log?id=eq.${id}`, {
@@ -363,6 +379,48 @@ window.sendAll = async function() {
   } catch(e) {
     toast('Error: ' + e.message, 'error');
     if (btn) { btn.textContent = `✈️ Approve & Send All (${emailQueue.length})`; btn.disabled = false; }
+  }
+};
+
+// ── Retry failed emails (needs_sender → scheduled → fire engine) ──
+window.retryFailed = async function() {
+  const failedIds = emailQueue.filter(r => r.status === 'needs_sender').map(r => r.id);
+  if (!failedIds.length) return;
+  const btn = document.querySelector('[onclick="retryFailed()"]');
+  if (btn) { btn.textContent = '⏳ Retrying…'; btn.disabled = true; }
+  try {
+    await Promise.all(failedIds.map(id =>
+      fetch(`${SUPA}/rest/v1/outreach_log?id=eq.${id}`, {
+        method: 'PATCH',
+        headers: { apikey: ANON, Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ status: 'scheduled', scheduled_at: new Date().toISOString() })
+      })
+    ));
+    // Update in-memory queue statuses
+    emailQueue.forEach(r => { if (failedIds.includes(r.id)) r.status = 'scheduled'; });
+    toast(`✅ ${failedIds.length} email${failedIds.length!==1?'s':''} queued — firing engine…`, 'success');
+
+    // Fire follow-up engine
+    const res = await fetch(`${FN}/follow-up-engine`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}` },
+      body: '{}'
+    });
+    const data = await res.json().catch(() => ({}));
+    const sent = data.results?.reduce((s, r) => s + (r.sent || 0), 0) ?? 0;
+    if (sent > 0) {
+      toast(`📨 ${sent} email${sent!==1?'s':''} delivered!`, 'success');
+      // Remove sent emails from queue
+      emailQueue = emailQueue.filter(r => r.status !== 'scheduled');
+      document.getElementById('emailCount').textContent = emailQueue.length;
+      renderEmailQueue();
+    } else {
+      toast('Engine ran but no emails sent — check Gmail connection', 'error');
+      if (btn) { btn.textContent = '🔄 Retry Failed Emails'; btn.disabled = false; }
+    }
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+    if (btn) { btn.textContent = '🔄 Retry Failed Emails'; btn.disabled = false; }
   }
 };
 
