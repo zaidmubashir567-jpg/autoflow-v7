@@ -208,8 +208,10 @@ async function handleEnrich(body: Record<string,unknown>) {
   const painKey = Object.keys(NICHE_PAIN).find(k => nicheLower.includes(k));
   const painHook = painKey ? NICHE_PAIN[painKey] : `Focus on the gap between their online presence and their top local competitor.`;
 
-  const claudePrompt = `You are a B2B sales AI writing a cold email for a local ${niche} business.
+  const claudePrompt = `You are a sales AI writing cold outreach emails on behalf of AttoLeads (attoleads.com) — an AI-powered lead generation and digital marketing agency.
 
+SENDER COMPANY: AttoLeads
+SENDER WEBSITE: https://attoleads.com
 BUSINESS: ${business_name}
 WEBSITE: ${website || "unknown"}
 CITY: ${city}, ${state||""}
@@ -231,7 +233,7 @@ TASK: Return valid JSON only (no markdown, no backticks):
   "website_year": <estimated year site was built, e.g. 2018>,
   "top_fix": "<single highest-impact improvement for this business>",
   "email_subject": "<compelling subject line>",
-  "email_body": "<personalized 180-word email using the pain hook + their specific data. Structure: opening with pain hook + their real numbers | competitor comparison | one social proof line | what we fix | demo line: 'I built a free demo of what your site could look like: [business-name-slug]-demo.vercel.app' | AI receptionist mention | closing: 'Is this worth a 10-minute call? Reply with a time that works and I'll send you the calendar link.' NO price, NO generic opener>"
+  "email_body": "<personalized 180-word email using the pain hook + their specific data. Structure: opening with pain hook + their real numbers | competitor comparison | one social proof line | what we fix | demo line: 'I built a free demo of what your site could look like: [business-name-slug]-demo.vercel.app' | AI receptionist mention | closing: 'Is this worth a 10-minute call? Reply with a time that works and I\\'ll send you the calendar link.' Sign off with: 'Best,\\nTeam AttoLeads\\nhttps://attoleads.com' NO price, NO generic opener. ALWAYS sign as AttoLeads not any other name.>"
 }
 
 SCORING GUIDE:
