@@ -151,7 +151,7 @@
     .empty-state-text { font-size: .9rem; line-height: 1.5; }
     #af-loader { background: linear-gradient(90deg, var(--d-accent), #a78bfa) !important; }
   </style>
-  <link rel="stylesheet" href="/shared/leadfyn-theme.css">
+  <link rel="stylesheet" href="/shared/attoleads-theme.css">
 </head>
 <body>
 <div id="app">Loading…</div>
@@ -350,7 +350,7 @@ window.openMeeting = function(id) {
         ${m.visitor_email ? `<div style="display:flex;gap:10px"><span>📧</span><span>${m.visitor_email}</span></div>` : ''}
         ${m.visitor_phone ? `<div style="display:flex;gap:10px"><span>📞</span><span>${m.visitor_phone}</span></div>` : ''}
         ${m.company_name  ? `<div style="display:flex;gap:10px"><span>🏢</span><span>${m.company_name}</span></div>` : ''}
-        <div style="display:flex;gap:10px;align-items:flex-start"><span>🔗</span><span style="word-break:break-all;color:#818cf8;font-size:.8rem">https://autoflow-v7.vercel.app/book.html?t=${m.booking_token}</span></div>
+        <div style="display:flex;gap:10px;align-items:flex-start"><span>🔗</span><span style="word-break:break-all;color:#818cf8;font-size:.8rem">https://attoleads.com/book.html?t=${m.booking_token}</span></div>
       </div>
       <div style="display:flex;gap:10px;margin-top:24px">
         <button onclick="markComplete('${m.id}')" style="flex:1;padding:10px;border-radius:10px;border:none;background:linear-gradient(135deg,#10b981,#059669);color:#fff;font-weight:700;cursor:pointer;font-size:.9rem">✓ Mark Done</button>
@@ -363,7 +363,7 @@ window.openMeeting = function(id) {
 window.closeMeetingModal = () => { modalEl.style.display = 'none'; };
 
 window.copyBookingLink = function(tok) {
-  navigator.clipboard?.writeText(`https://autoflow-v7.vercel.app/book.html?t=${tok}`);
+  navigator.clipboard?.writeText(`https://attoleads.com/book.html?t=${tok}`);
   toast('Booking link copied!', 'success');
 };
 

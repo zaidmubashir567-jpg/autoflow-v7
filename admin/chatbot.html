@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>AI Receptionist — LeadFyn</title>
   <link rel="preconnect" href="https://ndwvsrtyjnaddrifafqk.supabase.co" crossorigin>
-  <link rel="stylesheet" href="/shared/leadfyn-theme.css">
+  <link rel="stylesheet" href="/shared/attoleads-theme.css">
   <style>
     .prod-tile {
       border-radius:14px;padding:18px 20px;border:1px solid;
@@ -318,7 +318,7 @@ document.getElementById('app').innerHTML = `
                 <div style="font-size:13px;color:#4c1d95;line-height:1.7">
                   We'll also add an AI assistant that answers every patient question 24/7 — even at 2am.<br>
                   It captures their name and number and emails it to you instantly.<br>
-                  <span style="font-size:12px;opacity:.8">Most dental practices see 6₃12 extra enquiries in the first month.</span>
+                  <span style="font-size:12px;opacity:.8">Most dental practices see 6–12 extra enquiries in the first month.</span>
                 </div>
               </div>
 
@@ -362,9 +362,9 @@ document.getElementById('app').innerHTML = `
 // ── CSS ───────────────────────────────────────────────────────
 document.head.insertAdjacentHTML('beforeend', `<style>
   .field-label { font-size:11px;color:var(--color-text-muted);font-weight:700;display:block;margin-bottom:5px;letter-spacing:.4px }
-</tyle>`);
+</style>`);
 
-// ── Data load ─────────────────────────────────────────────
+// ── Data load ─────────────────────────────────────────────────
 const leads = await getLeads(clientId);
 const eligibleLeads = leads.filter(l => ['interested', 'won', 'replied'].includes(l.stage));
 
@@ -384,7 +384,7 @@ select.addEventListener('change', function() {
 });
 
 document.getElementById('brandColor').addEventListener('input', function() {
-  document.getElementById('brandColorHexx').value = this.value;
+  document.getElementById('brandColorHex').value = this.value;
 });
 
 // Load deployed widgets
