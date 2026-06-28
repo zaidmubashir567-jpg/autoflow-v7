@@ -23,13 +23,14 @@
     import { routeByRole } from '/shared/router.js';
 
     async function handleGmailCallback(session) {
-      // Called when OAuth completes — if _gmail_cid is set this is a Gmail connect, not login
-      const _gcid = sessionStorage.getItem('_gmail_cid');
+      // Check both localStorage (new — survives cross-domain redirect)
+      // and sessionStorage (old — fallback)
+      const _gcid = localStorage.getItem('_gmail_cid') || sessionStorage.getItem('_gmail_cid');
       if (!_gcid || !session?.provider_token) return false;
 
       document.getElementById('msg').textContent = 'Saving Gmail token…';
 
-      // Stash the Gmail token for credentials.html to pick up
+      // Stash the Gmail token for credentials.html to pick up on return
       sessionStorage.setItem('_gmail_pending', JSON.stringify({
         cid:      _gcid,
         access:   session.provider_token,
@@ -37,38 +38,48 @@
         user:     session.user.email,
         saved_at: new Date().toISOString()
       }));
-      sessionStorage.removeItem('_gmail_cid');
 
-      // Restore the original admin session saved before connectGoogle() was called
-      const adminAccess  = sessionStorage.getItem('_admin_access');
-      const adminRefresh = sessionStorage.getItem('_admin_refresh');
+      // Clean up all markers
+      localStorage.removeItem('_gmail_cid');
+      sessionStorage.removeItem('_gmail_cid');
       sessionStorage.removeItem('_admin_access');
       sessionStorage.removeItem('_admin_refresh');
-
-      // Clear stale role cache so it re-validates with restored session
       ['_af_role','_af_cid','_af_uid'].forEach(k => sessionStorage.removeItem(k));
 
-      // No session to restore needed (no-auth admin) — go straight to credentials
+      // No-auth admin — go straight to credentials to pick up the pending token
       location.href = '/admin/credentials.html';
       return true;
     }
 
-    // Supabase handles the hash/code exchange automatically
+    // Only use onAuthStateChange — avoids race with getSession() running BEFORE
+    // the PKCE code exchange completes (which would return old session with no provider_token)
+    let _handled = false;
     supabase.auth.onAuthStateChange(async (event, session) => {
+      if (_handled) return;
       if (event === 'SIGNED_IN' && session) {
-        const handled = await handleGmailCallback(session);
-        if (!handled) await routeByRole();
+        _handled = true;
+        const gmailHandled = await handleGmailCallback(session);
+        if (!gmailHandled) await routeByRole();
       } else if (event === 'SIGNED_OUT') {
         location.href = '/';
       }
     });
 
-    // Fallback: if already have session just route
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      const handled = await handleGmailCallback(session);
-      if (!handled) await routeByRole();
-    }
+    // Delayed fallback: give the PKCE exchange 2s to complete so provider_token is populated
+    setTimeout(async () => {
+      if (_handled) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session && !_handled) {
+        _handled = true;
+        const gmailHandled = await handleGmailCallback(session);
+        if (!gmailHandled) await routeByRole();
+      }
+    }, 2000);
+
+    // Hard safety net: if still stuck after 12s, go to credentials anyway
+    setTimeout(() => {
+      if (!_handled) location.href = '/admin/credentials.html';
+    }, 12000);
   </script>
 </body>
 </html>
