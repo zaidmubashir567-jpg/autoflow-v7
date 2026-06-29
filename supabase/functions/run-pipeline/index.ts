@@ -235,45 +235,43 @@ async function handleDiscover(body: Record<string,unknown>) {
   await sb.from("pipeline_chat").insert({ run_id, client_id, role:"claude", type:"info",
     message:`${sourceLabel} — searching for ${niche} businesses in ${city}, ${state || ""}…` });
 
-  // ── Path A: Apify Google Maps (structured, 100% real businesses) ──
+  // ── Apify Google Maps ONLY — no fallback, 100% real businesses ──
   type BizCandidate = { name:string; website:string|null; phone?:string|null; address?:string|null; google_rating?:number|null; review_count?:number };
   let businesses: BizCandidate[] = [];
 
-  if (apifyKey) {
-    const apifyResults = await apifyGoogleMaps(`${niche} in ${city}, ${state || ""}`, apifyKey);
-    if (apifyResults.length > 0) {
-      businesses = apifyResults;
-      console.log(`[discover] Apify returned ${businesses.length} real businesses`);
-    } else {
-      console.warn("[discover] Apify returned 0 results — falling back to DuckDuckGo");
-    }
+  if (!apifyKey) {
+    // No key configured — block the run with a clear message
+    await sb.from("pipeline_runs").update({
+      status: "error",
+      error_message: "Apify API key not configured. Go to Credentials → 🗺️ Google Maps Scout and add your Apify key. Get a free key at apify.com (signup gives $5 credit).",
+      agent_message: "❌ Apify key missing — add it in Credentials",
+      completed_at: new Date().toISOString(),
+    }).eq("id", run_id);
+
+    await sb.from("pipeline_chat").insert({ run_id, client_id, role:"claude", type:"error",
+      message:`❌ Apify API key not found.\n\nGo to → Credentials → 🗺️ Google Maps Scout → paste your key.\n\nGet a free key at apify.com (free $5 credit = ~500 leads).` });
+
+    return err("Apify API key required. Add it in Credentials → Google Maps Scout.");
   }
 
-  // ── Path B: DuckDuckGo fallback (no API key or Apify failed) ──
-  if (businesses.length === 0) {
-    const [raw1, raw2] = await Promise.all([
-      ddgSearch(`${niche} ${city} ${state} contact phone`),
-      ddgSearch(`"${niche}" "${city}" small business website`),
-    ]);
+  const apifyResults = await apifyGoogleMaps(`${niche} in ${city}, ${state || ""}`, apifyKey);
 
-    const results1: {title:string;url:string;snippet:string}[] = JSON.parse(raw1||"[]");
-    const results2: {title:string;url:string;snippet:string}[] = JSON.parse(raw2||"[]");
-    const allResults = [...results1, ...results2];
+  if (apifyResults.length > 0) {
+    businesses = apifyResults;
+    console.log(`[discover] Apify Google Maps: ${businesses.length} real businesses found`);
+  } else {
+    // Apify returned nothing — likely query too narrow or actor timeout
+    await sb.from("pipeline_runs").update({
+      status: "error",
+      error_message: `Apify returned 0 businesses for "${niche} in ${city}". Try a broader niche or different city.`,
+      agent_message: `❌ No businesses found for "${niche}" in "${city}"`,
+      completed_at: new Date().toISOString(),
+    }).eq("id", run_id);
 
-    const SKIP_URL   = /yelp|yellowpages|angi|homeadvisor|thumbtack|houzz|facebook|google|bbb|angieslist|tripadvisor|wikipedia|amazon|indeed|linkedin|zillow|porch\.com|nextdoor|bark\.com/i;
-    const SKIP_TITLE = /^\d+\s+(best|top)|^top\s+\d+|^best\s+\w+\s+in\s|^the\s+best\s|\b202[0-9]\b|\bhow\s+to\b|\bguide\b|\breview[s]?\b|\bnear\s+me\b|\brated\b/i;
+    await sb.from("pipeline_chat").insert({ run_id, client_id, role:"claude", type:"error",
+      message:`❌ Apify found 0 businesses for "${niche}" in "${city}".\n\nTry:\n• A broader niche (e.g. "plumber" instead of "emergency plumber")\n• A larger city\n• Check your Apify key has remaining credits` });
 
-    const seen = new Set<string>();
-    for (const r of allResults) {
-      if (SKIP_URL.test(r.url)) continue;
-      const hostname = (() => { try { return new URL(r.url).hostname.replace(/^www\./,""); } catch(_) { return ""; } })();
-      if (!hostname || seen.has(hostname)) continue;
-      const name = r.title.replace(/\s*[-|–]\s*.{0,40}$/, "").replace(/\s+/g," ").trim().slice(0,60);
-      if (name.length < 4 || SKIP_TITLE.test(name)) continue;
-      seen.add(hostname);
-      businesses.push({ name, website: `https://${hostname}` });
-      if (businesses.length >= 10) break;
-    }
+    return err(`No businesses found for "${niche}" in "${city}". Try different niche/city.`);
   }
 
   await sb.from("pipeline_chat").insert({ run_id, client_id, role:"claude", type:"info",
