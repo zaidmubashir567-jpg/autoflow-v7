@@ -360,7 +360,11 @@ window.startPipeline = async function() {
           client_id: clientId,
           city, state, niche,
           business_name: biz.name,
-          website: biz.website,
+          website:       biz.website      ?? null,
+          phone:         biz.phone        ?? null,
+          address:       biz.address      ?? null,
+          google_rating: biz.google_rating ?? null,
+          review_count:  biz.review_count  ?? null,
         });
 
         if (result.saved) {
