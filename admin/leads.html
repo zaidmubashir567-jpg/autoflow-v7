@@ -217,16 +217,18 @@ window.genSite = async function(leadId, evt, isTop = false) {
     const json = await res.json();
     if (!res.ok || json.error) { toast(json.error || 'Generation failed', 'error'); return; }
 
-    // Update in-memory lead
+    // Update in-memory lead — only set demo_url if we got a real URL back
     const idx = allLeads.findIndex(l => l.id === leadId);
-    if (idx >= 0) allLeads[idx].demo_url = json.demo_url || 'generated';
+    if (idx >= 0 && json.demo_url) allLeads[idx].demo_url = json.demo_url;
     filterLeads();
 
     if (json.demo_url) {
-      toast(`🌐 Demo site live! Opening…`, 'success');
+      toast(`🌐 Demo site is live — opening now!`, 'success');
       window.open(json.demo_url, '_blank');
+    } else if (json.deployed === false) {
+      toast('HTML generated but no Vercel token — add Vercel token in Credentials to get a live URL', 'warning');
     } else {
-      toast('Site generated but Vercel token not set — add it in Credentials', 'warning');
+      toast('Deployment timed out — try the URL in a minute', 'warning');
     }
   } catch(e) {
     toast('Site error: ' + e.message, 'error');
