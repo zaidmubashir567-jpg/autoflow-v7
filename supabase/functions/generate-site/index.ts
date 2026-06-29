@@ -125,7 +125,7 @@ Output ONLY the raw HTML. No explanation, no markdown, no code blocks. Start wit
   }
 }
 
-// ── Vercel deployer ───────────────────────────────────────────
+// ── Vercel deployer — creates deployment then polls until READY ──
 async function deployToVercel(
   token: string,
   lead: Record<string, unknown>,
@@ -135,13 +135,16 @@ async function deployToVercel(
     .replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").slice(0, 30);
   const projectName = `af-demo-${bizName}-${Date.now().toString(36)}`;
 
+  const authHeaders = {
+    "Authorization": `Bearer ${token}`,
+    "Content-Type": "application/json"
+  };
+
   try {
+    // ── 1. Create deployment ────────────────────────────────────
     const res = await fetch(`${VERCEL}/v13/deployments`, {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
+      headers: authHeaders,
       body: JSON.stringify({
         name: projectName,
         files: [
@@ -167,9 +170,55 @@ async function deployToVercel(
     }
 
     const data = await res.json();
-    const url = data.url ? `https://${data.url}` : null;
-    console.log(`[generate-site] Deployed: ${url}`);
-    return url;
+    const deploymentId = data.id as string | undefined;
+    const rawUrl = data.url as string | undefined;
+
+    if (!rawUrl) {
+      console.error("[generate-site] Vercel returned no URL");
+      return null;
+    }
+
+    const finalUrl = `https://${rawUrl}`;
+    console.log(`[generate-site] Deployment created: ${finalUrl} (id: ${deploymentId})`);
+
+    // ── 2. Poll until READY (max 90s, check every 5s) ──────────
+    if (deploymentId) {
+      const maxWait  = 90_000; // 90 seconds
+      const interval = 5_000;  // poll every 5s
+      const started  = Date.now();
+
+      while (Date.now() - started < maxWait) {
+        await new Promise(r => setTimeout(r, interval));
+
+        try {
+          const poll = await fetch(`${VERCEL}/v13/deployments/${deploymentId}`, {
+            headers: authHeaders
+          });
+
+          if (poll.ok) {
+            const pollData = await poll.json();
+            const state = (pollData.readyState || pollData.status || "").toUpperCase();
+            console.log(`[generate-site] Poll state: ${state} (${Math.round((Date.now()-started)/1000)}s)`);
+
+            if (state === "READY") {
+              console.log(`[generate-site] Deployment READY: ${finalUrl}`);
+              return finalUrl;
+            }
+            if (state === "ERROR" || state === "CANCELED") {
+              console.error(`[generate-site] Deployment failed with state: ${state}`);
+              return null;
+            }
+          }
+        } catch (pollErr) {
+          console.warn("[generate-site] Poll error:", String(pollErr));
+        }
+      }
+
+      // Timed out — return URL anyway (deployment likely still building)
+      console.warn(`[generate-site] Timed out waiting for READY — returning URL anyway: ${finalUrl}`);
+    }
+
+    return finalUrl;
   } catch (e) {
     console.error("[generate-site] Vercel fetch error:", String(e));
     return null;
