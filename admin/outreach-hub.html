@@ -78,13 +78,37 @@ document.getElementById('app').innerHTML = `
         </div>
       </div>
 
-      <!-- Editable body -->
-      <textarea id="modalBody"
-        style="width:100%;height:340px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;padding:14px;font-size:13px;line-height:1.7;color:var(--color-text);font-family:inherit;resize:vertical;box-sizing:border-box;margin-bottom:10px"
-        placeholder="Email body…"></textarea>
+      <!-- Edit / Preview tabs -->
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <button id="tabEditBtn" onclick="switchModalTab('edit')"
+          style="padding:6px 16px;border-radius:8px;border:1px solid var(--color-border);cursor:pointer;font-size:12px;font-weight:700;background:#6366f1;color:#fff">
+          ✏️ Edit
+        </button>
+        <button id="tabPreviewBtn" onclick="switchModalTab('preview')"
+          style="padding:6px 16px;border-radius:8px;border:1px solid var(--color-border);cursor:pointer;font-size:12px;font-weight:700;background:var(--color-surface);color:var(--color-text)">
+          👁 Preview Email
+        </button>
+      </div>
 
-      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:14px">
-        ✏️ Edits are saved automatically when you click Send · Links in the email will be clickable for the recipient · attoleads.com footer is added automatically
+      <!-- Editable body -->
+      <div id="modalEditPane">
+        <textarea id="modalBody"
+          style="width:100%;height:320px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;padding:14px;font-size:13px;line-height:1.7;color:var(--color-text);font-family:inherit;resize:vertical;box-sizing:border-box;margin-bottom:10px"
+          placeholder="Email body…"></textarea>
+        <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:14px">
+          ✏️ Edits are saved when you click Send · Links will be clickable for the recipient · AttoLeads branded template added automatically
+        </div>
+      </div>
+
+      <!-- Preview pane — renders the exact branded email the recipient will see -->
+      <div id="modalPreviewPane" style="display:none;margin-bottom:14px">
+        <iframe id="emailPreviewFrame"
+          style="width:100%;height:420px;border:1px solid var(--color-border);border-radius:8px;background:#f1f5f9"
+          srcdoc="<p style='padding:20px;color:#888;font-family:Arial'>Loading preview…</p>">
+        </iframe>
+        <div style="font-size:11px;color:var(--color-text-muted);margin-top:6px">
+          👆 This is exactly what your recipient will see in their inbox
+        </div>
       </div>
 
       <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
@@ -272,6 +296,124 @@ window.previewEmail = function(idx) {
 window.closeModal = function() {
   document.getElementById('emailModal').style.display = 'none';
 };
+
+// ── Modal tab switcher ─────────────────────────────────────────
+window.switchModalTab = function(tab) {
+  const editPane    = document.getElementById('modalEditPane');
+  const previewPane = document.getElementById('modalPreviewPane');
+  const editBtn     = document.getElementById('tabEditBtn');
+  const previewBtn  = document.getElementById('tabPreviewBtn');
+
+  if (tab === 'preview') {
+    editPane.style.display    = 'none';
+    previewPane.style.display = 'block';
+    editBtn.style.background    = 'var(--color-surface)';
+    editBtn.style.color         = 'var(--color-text)';
+    previewBtn.style.background = '#6366f1';
+    previewBtn.style.color      = '#fff';
+    // Render the preview
+    const body    = document.getElementById('modalBody').value;
+    const subject = document.getElementById('modalSubject').value;
+    const html    = buildPreviewHtml(body, subject);
+    document.getElementById('emailPreviewFrame').srcdoc = html;
+  } else {
+    editPane.style.display    = 'block';
+    previewPane.style.display = 'none';
+    editBtn.style.background    = '#6366f1';
+    editBtn.style.color         = '#fff';
+    previewBtn.style.background = 'var(--color-surface)';
+    previewBtn.style.color      = 'var(--color-text)';
+  }
+};
+
+// ── Branded email preview — mirrors follow-up-engine's buildRawEmail ──────
+function buildPreviewHtml(body, subject) {
+  const DIVIDER = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
+  const rawParts = body.split(DIVIDER).map(p => p.trim()).filter(p => p.length > 0);
+  let emailBodyText = body;
+  let auditContent  = '';
+  if (rawParts.length >= 2) {
+    auditContent  = rawParts.slice(0, rawParts.length - 1).join('\n\n');
+    emailBodyText = rawParts[rawParts.length - 1];
+  }
+
+  function esc(t) {
+    return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  function renderText(text) {
+    return esc(text)
+      .replace(/(https?:\/\/[^\s<>"]+)/g,'<a href="$1" style="color:#6366f1;font-weight:600">$1</a>')
+      .replace(/\n/g,'<br>\n');
+  }
+  function renderAuditLines(text) {
+    return text.split('\n').filter(l => l.trim()).map(line => {
+      const safe = esc(line);
+      const isHeader = /^[📊🤖🎯]/.test(line);
+      return isHeader
+        ? `<div style="font-size:13px;font-weight:800;color:#a5b4fc;margin-top:6px;margin-bottom:4px">${safe}</div>`
+        : `<div style="font-size:12.5px;color:#cbd5e1;line-height:1.7;padding:2px 0 2px 8px;border-left:2px solid #3730a3">${safe}</div>`;
+    }).join('\n');
+  }
+
+  const year = new Date().getFullYear();
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0">
+    <tr>
+      <td style="background:linear-gradient(135deg,#4f46e5 0%,#6366f1 50%,#818cf8 100%);padding:0">
+        <table width="620" align="center" cellpadding="0" cellspacing="0" style="max-width:620px;margin:0 auto">
+          <tr>
+            <td style="padding:22px 32px 18px 32px">
+              <div style="color:#fff;font-size:26px;font-weight:900;letter-spacing:-1px">AttoLeads</div>
+              <div style="color:rgba(255,255,255,0.75);font-size:11px;margin-top:5px;letter-spacing:1.5px;text-transform:uppercase">AI-Powered Lead Generation &amp; Outreach</div>
+            </td>
+            <td style="padding:22px 32px 18px 0;text-align:right;vertical-align:middle">
+              <a href="https://attoleads.com" style="background:rgba(255,255,255,0.15);color:#fff;text-decoration:none;font-size:11px;font-weight:700;padding:7px 16px;border-radius:20px;border:1px solid rgba(255,255,255,0.3)">attoleads.com ↗</a>
+            </td>
+          </tr>
+          <tr><td colspan="2" style="height:4px;background:linear-gradient(90deg,#fbbf24,#f59e0b,#fbbf24)"></td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+  <table width="620" align="center" cellpadding="0" cellspacing="0" style="max-width:620px;margin:0 auto">
+    <tr>
+      <td style="background:#ffffff;padding:32px 36px 28px 36px">
+        <div style="font-size:14px;line-height:1.85;color:#1e293b;white-space:pre-wrap">${renderText(emailBodyText)}</div>
+        ${auditContent ? `
+        <div style="background:#0f172a;border-radius:12px;padding:22px 24px;margin:28px 0 8px 0;border-top:4px solid #fbbf24;box-shadow:0 4px 24px rgba(15,23,42,0.18)">
+          ${renderAuditLines(auditContent)}
+        </div>` : ''}
+      </td>
+    </tr>
+  </table>
+  <table width="620" align="center" cellpadding="0" cellspacing="0" style="max-width:620px;margin:0 auto">
+    <tr>
+      <td style="background:#0f172a;padding:24px 36px">
+        <div style="height:3px;background:linear-gradient(90deg,#6366f1,#818cf8,#6366f1);border-radius:2px;margin-bottom:18px"></div>
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="vertical-align:top">
+              <div style="color:#e2e8f0;font-size:16px;font-weight:800">AttoLeads</div>
+              <div style="color:#64748b;font-size:11px;margin-top:4px;line-height:1.6">AI-powered lead generation<br>for local businesses</div>
+            </td>
+            <td style="vertical-align:top;text-align:right">
+              <a href="https://attoleads.com" style="color:#818cf8;font-size:12px;font-weight:700;text-decoration:none">attoleads.com</a><br>
+              <span style="color:#475569;font-size:10px">© ${year} AttoLeads</span>
+            </td>
+          </tr>
+        </table>
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid #1e293b;font-size:10px;color:#475569;text-align:center">
+          You received this because your business was identified as a strong match for our services.
+          <br>To unsubscribe, reply with "unsubscribe".
+        </div>
+      </td>
+    </tr>
+  </table>
+</body></html>`;
+}
 
 // Save edits to DB without sending
 window.saveEdits = async function() {
