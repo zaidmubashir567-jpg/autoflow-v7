@@ -231,6 +231,38 @@ document.getElementById('app').innerHTML = `
     <div class="page-body">
       <div id="alerts"></div>
 
+      <!-- ── System Status Bar ────────────────────────────────── -->
+      <div id="systemStatusBar" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;padding:12px 16px;
+           background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;align-items:center">
+        <span style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.7px;margin-right:4px">System Status</span>
+        <span id="status-pipeline" style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;background:rgba(71,85,105,.2);color:#94a3b8;border:1px solid rgba(71,85,105,.25)">⏸ Pipeline Idle</span>
+        <span id="status-followup" style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;background:rgba(71,85,105,.2);color:#94a3b8;border:1px solid rgba(71,85,105,.25)">📅 Follow-ups Loading…</span>
+        <span id="status-apify" style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;background:rgba(71,85,105,.2);color:#94a3b8;border:1px solid rgba(71,85,105,.25)">🗺️ Apify Loading…</span>
+        <span id="status-gmail" style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;background:rgba(71,85,105,.2);color:#94a3b8;border:1px solid rgba(71,85,105,.25)">✉️ Gmail Loading…</span>
+        <span style="margin-left:auto;font-size:11px;color:#475569" id="status-updated"></span>
+      </div>
+
+      <!-- ── Apify Import Leads Panel ─────────────────────────── -->
+      <div class="card" id="apifyImportPanel" style="margin-bottom:20px;padding:16px 20px;display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+          <div>
+            <div class="card-title" style="margin-bottom:2px;padding-bottom:0;border-bottom:none">📥 Apify Import Leads</div>
+            <div style="font-size:12px;color:var(--color-text-muted)" id="apifyImportSub">Leads imported directly from Apify datasets</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button onclick="location.href='/admin/leads.html?filter=apify'" style="padding:8px 16px;background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.35);color:#818cf8;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s"
+              onmouseover="this.style.background='rgba(99,102,241,.25)'" onmouseout="this.style.background='rgba(99,102,241,.15)'">
+              👁️ View All Leads
+            </button>
+            <button id="sendApifyOutreachBtn" onclick="sendApifyOutreach()" style="padding:8px 18px;background:linear-gradient(135deg,#6366f1,#818cf8);border:none;color:#fff;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;box-shadow:0 2px 12px rgba(99,102,241,.3)"
+              onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+              📧 Send Outreach to All
+            </button>
+          </div>
+        </div>
+        <div id="apifyImportRuns" style="display:grid;gap:10px"></div>
+      </div>
+
       <!-- ── Daily Temperature Panel ───────────────────────── -->
       <div class="card" style="margin-bottom:20px;padding:16px 20px" id="tempPanel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -411,21 +443,51 @@ document.getElementById('statsGrid').innerHTML = [
   statCard('Manual DM Queue',     queue.length,      'no-email leads', '📲'),
 ].join('');
 
-// Recent runs
+// Recent runs — with manual action buttons
 document.getElementById('recentRuns').innerHTML = runs.length === 0
   ? `<p style="color:var(--color-text-muted);font-size:14px">No runs yet. <a href="/admin/pipeline.html" style="color:#818cf8">Run your first pipeline →</a></p>`
-  : runs.map(r => `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 8px;border-bottom:1px solid var(--color-border);border-radius:8px;transition:background .15s;cursor:default"
-         onmouseover="this.style.background='rgba(99,102,241,.06)'" onmouseout="this.style.background=''">
-      <div>
-        <div style="font-size:14px;font-weight:600;color:#f1f5f9">${r.city}, ${r.state} · ${r.niche}</div>
-        <div style="font-size:12px;color:var(--color-text-muted)">${new Date(r.created_at).toLocaleDateString()}</div>
-      </div>
-      <div style="text-align:right">
-        <div style="font-size:13px;color:var(--color-text-muted)">${r.leads_found ?? 0} found · ${r.leads_qualified ?? 0} qualified</div>
+  : runs.map(r => {
+      const isApify = (r.agent_message || '').includes('Apify');
+      const isRunning = r.status === 'running';
+      const isPending = r.status === 'paused_approval';
+      const isError   = r.status === 'error';
+
+      const btnStyle = (bg, border, color) =>
+        `padding:5px 11px;font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;border:1px solid ${border};background:${bg};color:${color};transition:all .2s`;
+
+      const actions = [];
+      if (isPending) {
+        actions.push(`<button onclick="approveRunOutreach('${r.id}')" style="${btnStyle('rgba(16,185,129,.12)','rgba(16,185,129,.3)','#34d399')}">📧 Send Outreach</button>`);
+        actions.push(`<button onclick="location.href='/admin/leads.html'" style="${btnStyle('rgba(99,102,241,.12)','rgba(99,102,241,.3)','#818cf8')}">👁 View Leads</button>`);
+      }
+      if (isRunning) {
+        actions.push(`<button onclick="location.href='/admin/pipeline.html'" style="${btnStyle('rgba(251,191,36,.12)','rgba(251,191,36,.3)','#fbbf24')}">⏳ Watch Live</button>`);
+      }
+      if (isError) {
+        actions.push(`<button onclick="location.href='/admin/pipeline.html'" style="${btnStyle('rgba(239,68,68,.1)','rgba(239,68,68,.25)','#f87171')}">🔄 Re-run</button>`);
+      }
+      if (!isRunning) {
+        actions.push(`<button onclick="location.href='/admin/pipeline.html'" style="${btnStyle('rgba(255,255,255,.05)','rgba(255,255,255,.1)','#94a3b8')}">▶ New Run</button>`);
+      }
+
+      return `
+    <div style="padding:12px 8px;border-bottom:1px solid var(--color-border);border-radius:8px;transition:background .15s"
+         onmouseover="this.style.background='rgba(99,102,241,.05)'" onmouseout="this.style.background=''">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div>
+          <div style="font-size:14px;font-weight:600;color:#f1f5f9">
+            ${isApify ? '📥 ' : '🗺️ '}${r.city || '?'}, ${r.state || ''} · ${r.niche || '?'}
+          </div>
+          <div style="font-size:12px;color:var(--color-text-muted);margin-top:2px">
+            ${new Date(r.created_at).toLocaleDateString()} · ${r.leads_found ?? 0} found · ${r.leads_qualified ?? 0} qualified
+            ${isApify ? ' · <span style="color:#a78bfa">Apify Import</span>' : ''}
+          </div>
+        </div>
         <span class="status-pill status-${r.status}">${r.status}</span>
       </div>
-    </div>`).join('');
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${actions.join('')}</div>
+    </div>`;
+    }).join('');
 
 // A/B stats
 const varHTML = Object.entries(varStats).map(([v, s]) => {
@@ -600,6 +662,135 @@ function setBrainActive(msg, isRunning) {
     pill.style.borderColor = 'rgba(99,102,241,.3)';
   }
 }
+
+// ── System Status Bar ─────────────────────────────────────────────
+(async () => {
+  try {
+    const { data: clientRow } = await _sb.from('clients').select('gmail_access_token,apify_key,claude_key').eq('id', clientId).single();
+    const { data: scheduledEmails } = await _sb.from('outreach_log').select('id', { count: 'exact', head: true }).eq('client_id', clientId).eq('status', 'scheduled');
+    const { data: runningRuns }     = await _sb.from('pipeline_runs').select('id', { count: 'exact', head: true }).eq('client_id', clientId).eq('status', 'running');
+    const { data: apifyRuns }       = await _sb.from('pipeline_runs').select('id', { count: 'exact', head: true }).eq('client_id', clientId).eq('status', 'paused_approval').ilike('agent_message', '%Apify%');
+
+    const pipelineRunning = (runningRuns?.length ?? 0) > 0 || runs.some(r => r.status === 'running');
+    const followupCount   = scheduledEmails?.length ?? 0;
+    const apifyPending    = apifyRuns?.length ?? 0;
+    const gmailOk         = !!(clientRow?.gmail_access_token);
+    const apifyOk         = !!(clientRow?.apify_key);
+
+    const pill = (id, bg, border, color, text) => {
+      const el = document.getElementById(id);
+      if (el) { el.style.background = bg; el.style.borderColor = border; el.style.color = color; el.textContent = text; }
+    };
+
+    pill('status-pipeline',
+      pipelineRunning ? 'rgba(99,102,241,.15)' : 'rgba(16,185,129,.1)',
+      pipelineRunning ? 'rgba(99,102,241,.35)' : 'rgba(16,185,129,.25)',
+      pipelineRunning ? '#818cf8' : '#34d399',
+      pipelineRunning ? '⚡ Pipeline Running' : '✅ Pipeline Idle');
+
+    pill('status-followup',
+      followupCount > 0 ? 'rgba(251,191,36,.1)' : 'rgba(71,85,105,.2)',
+      followupCount > 0 ? 'rgba(251,191,36,.3)' : 'rgba(71,85,105,.25)',
+      followupCount > 0 ? '#fbbf24' : '#64748b',
+      `📅 ${followupCount} Follow-ups Queued`);
+
+    pill('status-apify',
+      apifyOk ? 'rgba(0,179,134,.1)' : 'rgba(239,68,68,.1)',
+      apifyOk ? 'rgba(0,179,134,.3)' : 'rgba(239,68,68,.3)',
+      apifyOk ? '#2dd4bf' : '#f87171',
+      apifyOk ? '🗺️ Apify Connected' : '⚠️ Apify Key Missing');
+
+    pill('status-gmail',
+      gmailOk ? 'rgba(16,185,129,.1)' : 'rgba(239,68,68,.1)',
+      gmailOk ? 'rgba(16,185,129,.25)' : 'rgba(239,68,68,.25)',
+      gmailOk ? '#34d399' : '#f87171',
+      gmailOk ? '✉️ Gmail Connected' : '⚠️ Gmail Not Connected');
+
+    const upd = document.getElementById('status-updated');
+    if (upd) upd.textContent = 'Updated ' + new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  } catch(e) { console.warn('[status bar]', e); }
+})();
+
+// ── Apify Import Leads Panel ──────────────────────────────────────
+(async () => {
+  try {
+    const { data: apifyImportRuns } = await _sb.from('pipeline_runs')
+      .select('id,niche,city,state,status,leads_found,leads_qualified,agent_message,created_at,completed_at')
+      .eq('client_id', clientId)
+      .ilike('agent_message', '%Apify%')
+      .in('status', ['paused_approval', 'running', 'error'])
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    if (!apifyImportRuns || apifyImportRuns.length === 0) return;
+
+    const panel = document.getElementById('apifyImportPanel');
+    const sub   = document.getElementById('apifyImportSub');
+    if (panel) panel.style.display = 'block';
+
+    const totalLeads = apifyImportRuns.reduce((s, r) => s + (r.leads_qualified ?? 0), 0);
+    if (sub) sub.textContent = `${totalLeads} qualified leads imported across ${apifyImportRuns.length} Apify batch${apifyImportRuns.length > 1 ? 'es' : ''}`;
+
+    const container = document.getElementById('apifyImportRuns');
+    if (!container) return;
+
+    container.innerHTML = apifyImportRuns.map(r => {
+      const done   = r.status === 'paused_approval';
+      const isPend = r.leads_qualified > 0;
+      const date   = new Date(r.created_at).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+      const btnBase = 'padding:6px 14px;font-size:12px;font-weight:700;border-radius:7px;cursor:pointer;transition:all .2s;';
+
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;
+                background:rgba(99,102,241,.05);border:1px solid rgba(99,102,241,.12);border-radius:10px;gap:10px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#e2e8f0">📥 ${r.niche || 'restaurant'} in ${r.city || '?'}</div>
+          <div style="font-size:11px;color:#64748b;margin-top:3px">${date} · <strong style="color:#a5b4fc">${r.leads_qualified ?? 0} leads</strong> · ${r.leads_found ?? 0} found</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <span class="status-pill status-${r.status}">${r.status}</span>
+          ${done ? `
+          <button onclick="location.href='/admin/leads.html'" style="${btnBase}background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.3);color:#818cf8"
+            onmouseover="this.style.background='rgba(99,102,241,.22)'" onmouseout="this.style.background='rgba(99,102,241,.12)'">👁 View Leads</button>
+          <button onclick="approveRunOutreach('${r.id}')" style="${btnBase}background:linear-gradient(135deg,#6366f1,#818cf8);border:none;color:#fff;box-shadow:0 2px 10px rgba(99,102,241,.25)"
+            onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">📧 Send Outreach</button>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) { console.warn('[apify panel]', e); }
+})();
+
+// ── Manual action handlers ────────────────────────────────────────
+window.approveRunOutreach = async function(runId) {
+  const btn = event.target;
+  btn.textContent = '⏳ Approving…'; btn.disabled = true;
+  try {
+    // Move all draft emails for this run to 'approved' so follow-up-engine picks them up
+    const { error } = await _sb.from('outreach_log')
+      .update({ status: 'approved', approved_at: new Date().toISOString() })
+      .eq('run_id', runId).eq('status', 'draft');
+    if (error) throw error;
+    btn.textContent = '✅ Approved!'; btn.style.background = 'rgba(16,185,129,.15)'; btn.style.borderColor = 'rgba(16,185,129,.3)'; btn.style.color = '#34d399';
+    setTimeout(() => { btn.textContent = '📧 Send Outreach'; btn.disabled = false; btn.style.background='linear-gradient(135deg,#6366f1,#818cf8)'; btn.style.color='#fff'; }, 2500);
+  } catch(e) {
+    btn.textContent = '❌ Error'; btn.disabled = false;
+    console.error('[approveOutreach]', e);
+  }
+};
+
+window.sendApifyOutreach = async function() {
+  const btn = document.getElementById('sendApifyOutreachBtn');
+  if (btn) { btn.textContent = '⏳ Approving all…'; btn.disabled = true; }
+  try {
+    const { error } = await _sb.from('outreach_log')
+      .update({ status: 'approved', approved_at: new Date().toISOString() })
+      .eq('client_id', clientId).eq('status', 'draft');
+    if (error) throw error;
+    if (btn) { btn.textContent = '✅ All Approved!'; btn.style.background = 'rgba(16,185,129,.2)'; }
+    setTimeout(() => { if(btn){btn.textContent='📧 Send Outreach to All';btn.disabled=false;btn.style.background='linear-gradient(135deg,#6366f1,#818cf8)';} }, 3000);
+  } catch(e) {
+    if (btn) { btn.textContent = '❌ Error'; btn.disabled = false; }
+  }
+};
 
 // Solver errors
 if (runs.length > 0) {
