@@ -35,7 +35,12 @@ PRO $2,500/mo — Growth + unlimited city pipelines + priority support`;
 
 // ── Follow-up email templates ─────────────────────────────────────
 function makeFollowUps(bizName: string, owner: string|null, niche: string, city: string) {
-  const n = owner ? ` ${owner}` : "";
+  // Safe first-name extraction — never let "Not found" or junk into the greeting
+  const raw = (owner || "").trim();
+  const safeFirst = (raw && raw.toLowerCase() !== "not found" && raw.length > 1)
+    ? raw.split(" ")[0]
+    : null;
+  const n = safeFirst ? ` ${safeFirst}` : "";
   return [
     { seq:1, days:3,  subject:`Quick follow-up — ${bizName}`, body:`Hi${n},\n\nI reached out a few days ago about helping ${bizName} get more ${niche} clients in ${city}.\n\nJust wanted to make sure my message didn't get buried. The gap I spotted between you and your top local competitor is one we fix consistently — usually within 30 days.\n\nIs there a better time to connect this week?\n\n— AutoFlow AI` },
     { seq:2, days:7,  subject:`Last try — ${bizName} growth opportunity`, body:`Hi${n},\n\nI don't want to keep filling your inbox, so this will be my last message.\n\nWe've helped ${niche} businesses in ${city} increase monthly leads by 30-60% using AI-powered review management + outreach. The businesses that act first tend to lock in the advantage.\n\nIf the timing ever makes sense, I'm here.\n\n— AutoFlow AI` },
@@ -133,52 +138,146 @@ async function findContact(bizName:string, website:string|undefined, city:string
   return { email: email||guessedEmail, phone, ownerName, foundVia, isGuessed: !email && !!guessedEmail };
 }
 
+// ── Apify Google Maps discovery ──────────────────────────────────────
+interface ApifyBusiness {
+  name: string;
+  website: string | null;
+  phone: string | null;
+  address: string | null;
+  google_rating: number | null;
+  review_count: number;
+}
+
+async function apifyGoogleMaps(query: string, apifyKey: string): Promise<ApifyBusiness[]> {
+  try {
+    // Start actor run — waitForFinish=90s, 10 places keeps runtime ~25-40s
+    const startRes = await fetch(
+      "https://api.apify.com/v2/acts/compass~crawler-google-places/runs?waitForFinish=90",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apifyKey}`,
+        },
+        body: JSON.stringify({
+          searchStringsArray: [query],
+          maxCrawledPlaces: 10,
+          language: "en",
+          includeHistograms: false,
+          includeOpeningHours: false,
+          includePeopleAlsoSearch: false,
+          includeWebResults: false,
+        }),
+        signal: AbortSignal.timeout(95000),
+      }
+    );
+
+    if (!startRes.ok) {
+      const errTxt = await startRes.text();
+      console.error(`[apify] API error ${startRes.status}:`, errTxt.slice(0, 300));
+      return [];
+    }
+
+    const runData = await startRes.json() as { data?: { defaultDatasetId?: string; status?: string } };
+    const datasetId = runData?.data?.defaultDatasetId;
+    const runStatus = runData?.data?.status;
+
+    console.log(`[apify] Run status: ${runStatus} | dataset: ${datasetId}`);
+    if (!datasetId) return [];
+
+    // Fetch items from dataset (even if run is still RUNNING — partial results are fine)
+    const dataRes = await fetch(
+      `https://api.apify.com/v2/datasets/${datasetId}/items?limit=10`,
+      {
+        headers: { "Authorization": `Bearer ${apifyKey}` },
+        signal: AbortSignal.timeout(12000),
+      }
+    );
+
+    if (!dataRes.ok) return [];
+
+    const places = await dataRes.json() as Record<string, unknown>[];
+    if (!Array.isArray(places) || places.length === 0) return [];
+
+    // Filter: only real open places with a name that doesn't look like a chain directory entry
+    const CHAIN_SKIP = /walmart|mcdonald|starbucks|lowes|home depot|costco|target|walgreens|cvs/i;
+    return places
+      .filter((p) => p.title && typeof p.title === "string" && !CHAIN_SKIP.test(String(p.title)))
+      .map((p) => ({
+        name:          String(p.title || ""),
+        website:       (p.website as string)  || null,
+        phone:         (p.phone as string)    || null,
+        address:       (p.address as string)  || null,
+        google_rating: (p.totalScore as number) || null,
+        review_count:  (p.reviewsCount as number) || 0,
+      }));
+  } catch (e) {
+    console.error("[apify] Error:", String(e));
+    return [];
+  }
+}
+
 // ── DISCOVER mode: search + parse 10 businesses ───────────────────
 async function handleDiscover(body: Record<string,unknown>) {
   const { run_id, client_id, city, state, niche } = body as Record<string,string>;
   const sb = getAdminClient();
 
+  // Resolve Apify key: client DB row takes priority over env secret
+  const { data: clientRow } = await sb.from("clients").select("apify_key").eq("id", client_id).single();
+  const apifyKey = (clientRow as Record<string,string>|null)?.apify_key || Deno.env.get("APIFY_API_KEY") || "";
+  const sourceLabel = apifyKey ? "🗺️ Google Maps" : "🔍 Web Search";
+
   await sb.from("pipeline_runs").update({
     status:"running", current_node:"Discovering",
-    agent_message:`Searching for ${niche} businesses in ${city}…`, started_at: new Date().toISOString()
+    agent_message:`${sourceLabel}: ${niche} in ${city}…`, started_at: new Date().toISOString()
   }).eq("id", run_id);
 
   await sb.from("pipeline_chat").insert({ run_id, client_id, role:"claude", type:"info",
-    message:`🔍 Searching for ${niche} businesses in ${city}, ${state}…` });
+    message:`${sourceLabel} — searching for ${niche} businesses in ${city}, ${state || ""}…` });
 
-  // Two DDG searches targeting actual business websites, not articles
-  const [raw1, raw2] = await Promise.all([
-    ddgSearch(`${niche} ${city} ${state} contact phone`),
-    ddgSearch(`"${niche}" "${city}" small business website`),
-  ]);
+  // ── Path A: Apify Google Maps (structured, 100% real businesses) ──
+  type BizCandidate = { name:string; website:string|null; phone?:string|null; address?:string|null; google_rating?:number|null; review_count?:number };
+  let businesses: BizCandidate[] = [];
 
-  const results1: {title:string;url:string;snippet:string}[] = JSON.parse(raw1||"[]");
-  const results2: {title:string;url:string;snippet:string}[] = JSON.parse(raw2||"[]");
-  const allResults = [...results1, ...results2];
+  if (apifyKey) {
+    const apifyResults = await apifyGoogleMaps(`${niche} in ${city}, ${state || ""}`, apifyKey);
+    if (apifyResults.length > 0) {
+      businesses = apifyResults;
+      console.log(`[discover] Apify returned ${businesses.length} real businesses`);
+    } else {
+      console.warn("[discover] Apify returned 0 results — falling back to DuckDuckGo");
+    }
+  }
 
-  // Skip directories, aggregators, chains, and article/list pages
-  const SKIP_URL   = /yelp|yellowpages|angi|homeadvisor|thumbtack|houzz|facebook|google|bbb|angieslist|tripadvisor|wikipedia|amazon|indeed|linkedin|zillow|thumbtack|porch\.com|nextdoor|bark\.com/i;
-  // Article title patterns: "10 Best...", "Top 5...", "Best X in City 2024" etc.
-  const SKIP_TITLE = /^\d+\s+(best|top)|^top\s+\d+|^best\s+\w+\s+in\s|^the\s+best\s|\b202[0-9]\b|\bhow\s+to\b|\bguide\b|\breview[s]?\b|\bnear\s+me\b|\brated\b/i;
+  // ── Path B: DuckDuckGo fallback (no API key or Apify failed) ──
+  if (businesses.length === 0) {
+    const [raw1, raw2] = await Promise.all([
+      ddgSearch(`${niche} ${city} ${state} contact phone`),
+      ddgSearch(`"${niche}" "${city}" small business website`),
+    ]);
 
-  const seen = new Set<string>();
-  const businesses: {name:string; website:string}[] = [];
+    const results1: {title:string;url:string;snippet:string}[] = JSON.parse(raw1||"[]");
+    const results2: {title:string;url:string;snippet:string}[] = JSON.parse(raw2||"[]");
+    const allResults = [...results1, ...results2];
 
-  for (const r of allResults) {
-    if (SKIP_URL.test(r.url)) continue;
-    const hostname = (() => { try { return new URL(r.url).hostname.replace(/^www\./,""); } catch(_) { return ""; } })();
-    if (!hostname || seen.has(hostname)) continue;
-    // Clean up title — strip location suffixes first
-    const name = r.title.replace(/\s*[-|–]\s*.{0,40}$/, "").replace(/\s+/g," ").trim().slice(0,60);
-    // Skip article/list titles
-    if (name.length < 4 || SKIP_TITLE.test(name)) continue;
-    seen.add(hostname);
-    businesses.push({ name, website: `https://${hostname}` });
-    if (businesses.length >= 10) break;
+    const SKIP_URL   = /yelp|yellowpages|angi|homeadvisor|thumbtack|houzz|facebook|google|bbb|angieslist|tripadvisor|wikipedia|amazon|indeed|linkedin|zillow|porch\.com|nextdoor|bark\.com/i;
+    const SKIP_TITLE = /^\d+\s+(best|top)|^top\s+\d+|^best\s+\w+\s+in\s|^the\s+best\s|\b202[0-9]\b|\bhow\s+to\b|\bguide\b|\breview[s]?\b|\bnear\s+me\b|\brated\b/i;
+
+    const seen = new Set<string>();
+    for (const r of allResults) {
+      if (SKIP_URL.test(r.url)) continue;
+      const hostname = (() => { try { return new URL(r.url).hostname.replace(/^www\./,""); } catch(_) { return ""; } })();
+      if (!hostname || seen.has(hostname)) continue;
+      const name = r.title.replace(/\s*[-|–]\s*.{0,40}$/, "").replace(/\s+/g," ").trim().slice(0,60);
+      if (name.length < 4 || SKIP_TITLE.test(name)) continue;
+      seen.add(hostname);
+      businesses.push({ name, website: `https://${hostname}` });
+      if (businesses.length >= 10) break;
+    }
   }
 
   await sb.from("pipeline_chat").insert({ run_id, client_id, role:"claude", type:"info",
-    message:`📋 Found ${businesses.length} ${niche} businesses to investigate in ${city}:\n${businesses.map((b,i)=>`${i+1}. ${b.name}`).join("\n")}` });
+    message:`📋 Found ${businesses.length} ${niche} businesses in ${city}:\n${businesses.map((b,i)=>`${i+1}. ${b.name}${b.google_rating ? ` ⭐${b.google_rating}` : ""}${b.review_count ? ` (${b.review_count} reviews)` : ""}`).join("\n")}` });
 
   return ok({ businesses, total: businesses.length });
 }
@@ -186,6 +285,12 @@ async function handleDiscover(body: Record<string,unknown>) {
 // ── ENRICH mode: process ONE business → save lead + email ─────────
 async function handleEnrich(body: Record<string,unknown>) {
   const { run_id, client_id, city, state, niche, business_name, website } = body as Record<string,string>;
+  // Pre-scraped data from Apify (optional — null for DDG path)
+  const prefetchPhone   = (body.phone   as string  | null) ?? null;
+  const prefetchAddress = (body.address as string  | null) ?? null;
+  const prefetchRating  = (body.google_rating  as number | null) ?? null;
+  const prefetchReviews = (body.review_count   as number | null) ?? null;
+
   const sb = getAdminClient();
   const { data: client } = await sb.from("clients").select("claude_key").eq("id", client_id).single();
   const claudeKey = (client as Record<string,string>)?.claude_key || Deno.env.get("ANTHROPIC_API_KEY") || "";
@@ -196,17 +301,23 @@ async function handleEnrich(body: Record<string,unknown>) {
     current_node:"Investigating", agent_message:`Investigating ${business_name}…`
   }).eq("id", run_id);
 
-  // 1. Contact info (max ~8s)
+  // 1. Contact info (max ~8s) — merge with Apify pre-scraped data
   const contact = await findContact(business_name, website, city);
+  const mergedPhone = prefetchPhone || contact.phone;
 
-  // 2. Reviews search (max ~8s)
-  const reviewRaw = await ddgSearch(`"${business_name}" ${city} reviews Google rating`);
-  const reviewSnippet = (() => {
-    try {
-      const res = JSON.parse(reviewRaw);
-      return res.slice(0,3).map((r:Record<string,string>)=>r.snippet||"").join(" ").slice(0,600);
-    } catch(_) { return ""; }
-  })();
+  // 2. Reviews search — skip if Apify already gave us rating + review count
+  let reviewSnippet = "";
+  if (!prefetchRating && !prefetchReviews) {
+    const reviewRaw = await ddgSearch(`"${business_name}" ${city} reviews Google rating`);
+    reviewSnippet = (() => {
+      try {
+        const res = JSON.parse(reviewRaw);
+        return res.slice(0,3).map((r:Record<string,string>)=>r.snippet||"").join(" ").slice(0,600);
+      } catch(_) { return ""; }
+    })();
+  } else {
+    reviewSnippet = `Google Maps: ${prefetchRating ?? "?"}/5 stars, ${prefetchReviews ?? 0} reviews`;
+  }
 
   // 3. Single Claude Haiku call — score + email (max ~5s)
   const nicheLower = niche.toLowerCase();
@@ -220,8 +331,11 @@ SENDER WEBSITE: https://attoleads.com
 BUSINESS: ${business_name}
 WEBSITE: ${website || "unknown"}
 CITY: ${city}, ${state||""}
+ADDRESS: ${prefetchAddress || "unknown"}
 EMAIL FOUND: ${contact.email || "none"}${contact.isGuessed ? " (guessed pattern)" : ""}
-PHONE FOUND: ${contact.phone || "none"}
+PHONE FOUND: ${mergedPhone || "none"}
+GOOGLE MAPS RATING: ${prefetchRating !== null ? prefetchRating : "unknown"}
+GOOGLE REVIEW COUNT: ${prefetchReviews !== null ? prefetchReviews : "unknown"}
 REVIEW DATA FROM SEARCH: ${reviewSnippet || "no data found"}
 
 NICHE PAIN HOOK: ${painHook}
@@ -280,13 +394,21 @@ Return ONLY the JSON object, nothing else.`;
 
   // 4. Save lead to DB
   const place_id = `ai_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+  // Safe owner name — never store "Not found"
+  const rawOwner = (contact.ownerName || "").trim();
+  const safeOwnerName = (rawOwner && rawOwner.toLowerCase() !== "not found" && rawOwner.length > 1)
+    ? rawOwner : null;
+
   const { data:lead, error:le } = await sb.from("leads").insert({
     client_id, place_id,
     business_name,
-    website:    website || null,
-    email:      contact.email || null,
-    phone:      contact.phone || null,
-    owner_name: contact.ownerName || null,
+    website:      website || null,
+    email:        contact.email || null,
+    phone:        mergedPhone || null,
+    owner_name:   safeOwnerName,
+    address:      prefetchAddress || null,
+    google_rating:prefetchRating || null,
+    review_count: prefetchReviews || 0,
     city, state:state||null, niche,
     score,
     score_reason: String(parsed.score_reason||""),
@@ -342,7 +464,7 @@ Return ONLY the JSON object, nothing else.`;
   await sb.from("pipeline_runs").update({
     leads_found:     (rd?.leads_found||0)+1,
     leads_qualified: (rd?.leads_qualified||0)+1,
-    emails_found:    (rd?.emails_found||0)+(contact.email?1:0),
+    emails_found:    (rd?.emails_found||0)+((contact.email||contact.isGuessed)?1:0),
     current_node: "Saving",
     agent_message: `Saved ${business_name} (score ${score})`,
   }).eq("id",run_id);
