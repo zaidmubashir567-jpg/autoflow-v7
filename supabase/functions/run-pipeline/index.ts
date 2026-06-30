@@ -371,7 +371,7 @@ TASK: Return valid JSON only (no markdown, no backticks):
   "website_year": <estimated year site was built, e.g. 2018>,
   "top_fix": "<single highest-impact improvement for this business>",
   "email_subject": "<compelling subject line>",
-  "email_body": "<personalized 180-word email using the pain hook + their specific data. Structure: opening with pain hook + their real numbers | competitor comparison | one social proof line | what we fix | demo line: 'I built a free demo of what your site could look like: [business-name-slug]-demo.vercel.app' | AI receptionist mention | closing: 'Is this worth a 10-minute call? Reply with a time that works and I\\'ll send you the calendar link.' Sign off with: 'Best,\\nTeam AttoLeads\\nhttps://attoleads.com' NO price, NO generic opener. ALWAYS sign as AttoLeads not any other name.>"
+  "email_body": "<personalized 180-word email using the pain hook + their specific data. Structure: opening with pain hook + their real numbers | competitor comparison | one social proof line | what we specifically fix for their niche | free demo offer: 'Reply to this email and I will build a free live preview of your new website — ready within 24 hours, no strings attached.' | AI receptionist mention | closing: 'Is this worth a 10-minute call? Reply with a time that works and I\\'ll send you the calendar link.' Sign off with: 'Best,\\nTeam AttoLeads\\nhttps://attoleads.com' NO price, NO generic opener, NO fake URLs. ALWAYS sign as AttoLeads not any other name.>"
 }
 
 SCORING GUIDE:
