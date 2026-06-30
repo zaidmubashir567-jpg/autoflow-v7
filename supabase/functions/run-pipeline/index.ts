@@ -142,15 +142,16 @@ async function findContact(bizName:string, website:string|undefined, city:string
 interface ApifyBusiness {
   name: string;
   website: string | null;
+  email: string | null;
   phone: string | null;
   address: string | null;
   google_rating: number | null;
   review_count: number;
 }
 
-async function apifyGoogleMaps(query: string, apifyKey: string): Promise<ApifyBusiness[]> {
+async function apifyGoogleMaps(query: string, apifyKey: string, maxItems = 10): Promise<ApifyBusiness[]> {
   try {
-    // Start actor run — waitForFinish=90s, 10 places keeps runtime ~25-40s
+    // Start actor run — waitForFinish=90s
     const startRes = await fetch(
       "https://api.apify.com/v2/acts/compass~crawler-google-places/runs?waitForFinish=90",
       {
@@ -161,8 +162,10 @@ async function apifyGoogleMaps(query: string, apifyKey: string): Promise<ApifyBu
         },
         body: JSON.stringify({
           searchStringsArray: [query],
-          maxCrawledPlaces: 10,
+          maxCrawledPlaces: maxItems,
           language: "en",
+          // Contact enrichment — Apify visits each business website to extract email
+          scrapeContacts: true,
           includeHistograms: false,
           includeOpeningHours: false,
           includePeopleAlsoSearch: false,
@@ -187,7 +190,7 @@ async function apifyGoogleMaps(query: string, apifyKey: string): Promise<ApifyBu
 
     // Fetch items from dataset (even if run is still RUNNING — partial results are fine)
     const dataRes = await fetch(
-      `https://api.apify.com/v2/datasets/${datasetId}/items?limit=10`,
+      `https://api.apify.com/v2/datasets/${datasetId}/items?limit=${maxItems}`,
       {
         headers: { "Authorization": `Bearer ${apifyKey}` },
         signal: AbortSignal.timeout(12000),
@@ -203,14 +206,23 @@ async function apifyGoogleMaps(query: string, apifyKey: string): Promise<ApifyBu
     const CHAIN_SKIP = /walmart|mcdonald|starbucks|lowes|home depot|costco|target|walgreens|cvs/i;
     return places
       .filter((p) => p.title && typeof p.title === "string" && !CHAIN_SKIP.test(String(p.title)))
-      .map((p) => ({
-        name:          String(p.title || ""),
-        website:       (p.website as string)  || null,
-        phone:         (p.phone as string)    || null,
-        address:       (p.address as string)  || null,
-        google_rating: (p.totalScore as number) || null,
-        review_count:  (p.reviewsCount as number) || 0,
-      }));
+      .map((p) => {
+        // Pull email from Apify contact enrichment — tries multiple fields
+        const apifyEmail =
+          (p.email as string) ||
+          (Array.isArray(p.emails) ? (p.emails as string[])[0] : null) ||
+          (p.contactInfo && (p.contactInfo as Record<string,unknown>).email as string) ||
+          null;
+        return {
+          name:          String(p.title || ""),
+          website:       (p.website as string)  || null,
+          email:         apifyEmail,
+          phone:         (p.phone as string)    || null,
+          address:       (p.address as string)  || null,
+          google_rating: (p.totalScore as number) || null,
+          review_count:  (p.reviewsCount as number) || 0,
+        };
+      });
   } catch (e) {
     console.error("[apify] Error:", String(e));
     return [];
@@ -220,6 +232,7 @@ async function apifyGoogleMaps(query: string, apifyKey: string): Promise<ApifyBu
 // ── DISCOVER mode: search + parse 10 businesses ───────────────────
 async function handleDiscover(body: Record<string,unknown>) {
   const { run_id, client_id, city, state, niche } = body as Record<string,string>;
+  const maxItems = Math.min(100, Math.max(5, Number(body.max_items ?? 20)));
   const sb = getAdminClient();
 
   // Resolve Apify key: client DB row takes priority over env secret
@@ -254,7 +267,7 @@ async function handleDiscover(body: Record<string,unknown>) {
     return err("Apify API key required. Add it in Credentials → Google Maps Scout.");
   }
 
-  const apifyResults = await apifyGoogleMaps(`${niche} in ${city}, ${state || ""}`, apifyKey);
+  const apifyResults = await apifyGoogleMaps(`${niche} in ${city}, ${state || ""}`, apifyKey, maxItems);
 
   if (apifyResults.length > 0) {
     businesses = apifyResults;
@@ -284,6 +297,7 @@ async function handleDiscover(body: Record<string,unknown>) {
 async function handleEnrich(body: Record<string,unknown>) {
   const { run_id, client_id, city, state, niche, business_name, website } = body as Record<string,string>;
   // Pre-scraped data from Apify (optional — null for DDG path)
+  const prefetchEmail   = (body.email   as string  | null) ?? null;
   const prefetchPhone   = (body.phone   as string  | null) ?? null;
   const prefetchAddress = (body.address as string  | null) ?? null;
   const prefetchRating  = (body.google_rating  as number | null) ?? null;
@@ -296,11 +310,18 @@ async function handleEnrich(body: Record<string,unknown>) {
   if (!claudeKey) return err("No Claude API key configured");
 
   await sb.from("pipeline_runs").update({
-    current_node:"Investigating", agent_message:`Investigating ${business_name}…`
+    current_node: "Scoring", agent_message: `Scoring ${business_name}…`
   }).eq("id", run_id);
 
-  // 1. Contact info (max ~8s) — merge with Apify pre-scraped data
-  const contact = await findContact(business_name, website, city);
+  // 1. Contact info — SKIP website scraping if Apify already gave us an email
+  let contact: { email:string|null; phone:string|null; ownerName:string|null; foundVia:string[]; isGuessed:boolean };
+  if (prefetchEmail) {
+    // Apify contact enrichment already did the work — use it directly, no scraping needed
+    contact = { email: prefetchEmail, phone: prefetchPhone, ownerName: null, foundVia: ["apify"], isGuessed: false };
+  } else {
+    // No email from Apify — run our own website scraper as fallback (~8s)
+    contact = await findContact(business_name, website, city);
+  }
   const mergedPhone = prefetchPhone || contact.phone;
 
   // 2. Reviews search — skip if Apify already gave us rating + review count
