@@ -335,14 +335,20 @@ const [runs, history, drafts, queue, varStats, brainStats, allLeads] = await Pro
 // Alerts
 const alerts = [];
 if (drafts.length > 0)
-  alerts.push(`<div class="alert alert--warning">
-    📬 <strong>${drafts.length} reply draft${drafts.length > 1 ? 's' : ''}</strong> waiting for your approval
-    <a href="/admin/pipeline-manager.html" class="alert-link">Review now →</a>
+  alerts.push(`<div class="alert alert--warning" style="position:relative;padding-right:40px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span>📬 <strong>${drafts.length} reply draft${drafts.length > 1 ? 's' : ''}</strong> waiting for your approval</span>
+    <a href="/admin/pipeline-manager.html" class="alert-link" style="margin-left:auto">Review now →</a>
+    <button onclick="this.closest('.alert').remove()" title="Dismiss"
+      style="position:absolute;top:50%;right:12px;transform:translateY(-50%);background:none;border:none;color:inherit;font-size:18px;line-height:1;cursor:pointer;opacity:.55;padding:2px 5px;border-radius:4px;transition:opacity .15s"
+      onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.55'">×</button>
   </div>`);
 if (queue.length > 0)
-  alerts.push(`<div class="alert alert--info">
-    💬 <strong>${queue.length} lead${queue.length > 1 ? 's' : ''}</strong> in manual DM queue
-    <a href="/admin/outreach-hub.html" class="alert-link">Send DMs →</a>
+  alerts.push(`<div class="alert alert--info" style="position:relative;padding-right:40px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span>💬 <strong>${queue.length} lead${queue.length > 1 ? 's' : ''}</strong> in manual DM queue</span>
+    <a href="/admin/outreach-hub.html" class="alert-link" style="margin-left:auto">Send DMs →</a>
+    <button onclick="this.closest('.alert').remove()" title="Dismiss"
+      style="position:absolute;top:50%;right:12px;transform:translateY(-50%);background:none;border:none;color:inherit;font-size:18px;line-height:1;cursor:pointer;opacity:.55;padding:2px 5px;border-radius:4px;transition:opacity .15s"
+      onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.55'">×</button>
   </div>`);
 document.getElementById('alerts').innerHTML = alerts.join('');
 
