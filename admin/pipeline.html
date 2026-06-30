@@ -109,8 +109,20 @@ document.getElementById('app').innerHTML = `
         <div class="card" id="configPanel">
           <div class="card-title">Campaign Settings</div>
 
-          <!-- AUTO mode toggle -->
-          <div class="toggle-row" style="margin-bottom:20px">
+          <!-- Source mode selector -->
+          <div style="display:flex;gap:8px;margin-bottom:20px;background:rgba(0,0,0,.25);border-radius:10px;padding:4px">
+            <button id="modeApify" onclick="setSourceMode('apify')"
+              style="flex:1;padding:8px;border-radius:7px;border:none;cursor:pointer;font-size:12px;font-weight:700;transition:all .2s;background:linear-gradient(135deg,#6366f1,#818cf8);color:#fff;box-shadow:0 2px 8px rgba(99,102,241,.35)">
+              🗺️ Apify Search
+            </button>
+            <button id="modeAI" onclick="setSourceMode('ai')"
+              style="flex:1;padding:8px;border-radius:7px;border:none;cursor:pointer;font-size:12px;font-weight:700;transition:all .2s;background:transparent;color:#64748b">
+              🧠 AI Pipeline
+            </button>
+          </div>
+
+          <!-- AUTO mode toggle (AI mode only) -->
+          <div id="autoModeRow" class="toggle-row" style="margin-bottom:20px;display:none">
             <div>
               <strong>AUTO Mode</strong>
               <div style="font-size:12px;color:var(--color-text-muted)">Opportunity Scout picks best city + niche automatically</div>
@@ -121,7 +133,7 @@ document.getElementById('app').innerHTML = `
             </label>
           </div>
 
-          <!-- Manual config (hidden in auto mode) -->
+          <!-- Manual config -->
           <div id="manualConfig">
             <div class="form-group">
               <label>State</label>
@@ -142,6 +154,18 @@ document.getElementById('app').innerHTML = `
               </div>
               <div id="nicheChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
             </div>
+
+            <!-- Max results — Apify mode only -->
+            <div class="form-group" id="maxResultsRow">
+              <label>Number of Results</label>
+              <div style="display:flex;align-items:center;gap:10px">
+                <input type="range" id="maxItemsRange" min="5" max="100" step="5" value="20"
+                  oninput="document.getElementById('maxItemsVal').textContent=this.value"
+                  style="flex:1;accent-color:#6366f1">
+                <span id="maxItemsVal" style="font-size:15px;font-weight:800;color:#818cf8;min-width:32px;text-align:right">20</span>
+              </div>
+              <div style="font-size:11px;color:var(--color-text-muted);margin-top:4px">Businesses Apify will scrape from Google Maps</div>
+            </div>
           </div>
 
           <!-- Auto mode display -->
@@ -161,9 +185,16 @@ document.getElementById('app').innerHTML = `
             Loading daily send cap info…
           </div>
 
-          <button class="btn btn-primary" id="runBtn" onclick="startPipeline()" style="width:100%;padding:14px;font-size:15px">
-            ⚡ Run Pipeline
-          </button>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" id="runBtn" onclick="startPipeline()" style="flex:1;padding:14px;font-size:15px">
+              🗺️ Start Apify Search
+            </button>
+            <button id="stopBtn" onclick="stopPipeline()" title="Stop pipeline"
+              style="padding:14px 16px;font-size:15px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);color:#f87171;border-radius:9px;cursor:pointer;display:none;transition:all .2s;font-weight:700"
+              onmouseover="this.style.background='rgba(239,68,68,.22)'" onmouseout="this.style.background='rgba(239,68,68,.12)'">
+              ⏹
+            </button>
+          </div>
 
           <div id="approvalBanner" style="display:none;margin-top:16px;padding:14px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;text-align:center">
             <div style="font-weight:600;margin-bottom:8px">✋ First-batch approval required</div>
@@ -230,6 +261,40 @@ document.getElementById('app').innerHTML = `
     </div>
   </main>`;
 
+// ── Source mode (Apify / AI) ─────────────────────────────────
+let _sourceMode = 'apify';
+
+window.setSourceMode = function(mode) {
+  _sourceMode = mode;
+  const btnApify = document.getElementById('modeApify');
+  const btnAI    = document.getElementById('modeAI');
+  const autoRow  = document.getElementById('autoModeRow');
+  const maxRow   = document.getElementById('maxResultsRow');
+  const runBtn   = document.getElementById('runBtn');
+
+  const activeStyle  = 'flex:1;padding:8px;border-radius:7px;border:none;cursor:pointer;font-size:12px;font-weight:700;transition:all .2s;background:linear-gradient(135deg,#6366f1,#818cf8);color:#fff;box-shadow:0 2px 8px rgba(99,102,241,.35)';
+  const inactiveStyle= 'flex:1;padding:8px;border-radius:7px;border:none;cursor:pointer;font-size:12px;font-weight:700;transition:all .2s;background:transparent;color:#64748b';
+
+  if (mode === 'apify') {
+    btnApify.style.cssText = activeStyle;
+    btnAI.style.cssText    = inactiveStyle;
+    if (autoRow) autoRow.style.display = 'none';
+    if (maxRow)  maxRow.style.display  = 'block';
+    if (runBtn)  runBtn.innerHTML       = '🗺️ Start Apify Search';
+    // reset auto mode
+    const autoToggle = document.getElementById('autoMode');
+    if (autoToggle) autoToggle.checked = false;
+    document.getElementById('manualConfig').style.display = 'block';
+    document.getElementById('autoConfig').style.display   = 'none';
+  } else {
+    btnAI.style.cssText    = activeStyle;
+    btnApify.style.cssText = inactiveStyle;
+    if (autoRow) autoRow.style.display = 'flex';
+    if (maxRow)  maxRow.style.display  = 'none';
+    if (runBtn)  runBtn.innerHTML       = '⚡ Run AI Pipeline';
+  }
+};
+
 // Load daily cap info
 const todaySent = await getTodaySendCount(clientId);
 const cap = client.daily_email_cap ?? 20;
@@ -278,6 +343,17 @@ window.toggleAutoMode = async function(on) {
   }
 };
 
+// Stop pipeline
+let _stopRequested = false;
+window.stopPipeline = function() {
+  _stopRequested = true;
+  const stopBtn = document.getElementById('stopBtn');
+  const runBtn  = document.getElementById('runBtn');
+  if (stopBtn) { stopBtn.textContent = '⏹ Stopping…'; stopBtn.disabled = true; }
+  if (runBtn)  { runBtn.disabled = false; }
+  appendChatMsg({ role:'system', type:'warning', message:'⏹ Stop requested — will halt after current business finishes.', created_at: new Date().toISOString() });
+};
+
 // Start pipeline
 let activeRunId = null;
 let subscription = null;
@@ -303,8 +379,13 @@ window.startPipeline = async function() {
     toast('Please fill in state, city, and niche', 'warning'); return;
   }
 
-  const btn = document.getElementById('runBtn');
-  btn.disabled = true; btn.textContent = 'Starting…';
+  const maxItems = parseInt(document.getElementById('maxItemsRange')?.value ?? '20', 10);
+  _stopRequested = false;
+  const btn     = document.getElementById('runBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  btn.disabled = true;
+  btn.textContent = _sourceMode === 'apify' ? 'Searching Apify…' : 'Starting…';
+  if (stopBtn) { stopBtn.style.display = 'block'; stopBtn.disabled = false; stopBtn.textContent = '⏹'; }
 
   // Create run record
   const run = await createRun({
@@ -337,8 +418,8 @@ window.startPipeline = async function() {
 
   try {
     // STEP 1 — Discover businesses (single fast call ~10s)
-    btn.textContent = 'Discovering…';
-    const discovery = await callEdge({ mode:'discover', run_id: run.id, client_id: clientId, city, state, niche });
+    btn.textContent = 'Searching Apify…';
+    const discovery = await callEdge({ mode:'discover', run_id: run.id, client_id: clientId, city, state, niche, max_items: maxItems });
     const businesses = discovery.businesses || [];
 
     if (!businesses.length) throw new Error('No businesses found — try a different city or niche');
@@ -350,6 +431,10 @@ window.startPipeline = async function() {
     let totalScore = 0;
 
     for (let i = 0; i < businesses.length; i++) {
+      if (_stopRequested) {
+        appendChatMsg({ role:'system', type:'warning', message:`⏹ Stopped at ${i}/${businesses.length} — ${savedCount} leads saved.`, created_at: new Date().toISOString() });
+        break;
+      }
       const biz = businesses[i];
       btn.textContent = `Processing ${i+1}/${businesses.length}…`;
 
@@ -400,7 +485,12 @@ window.startPipeline = async function() {
     toast(e.message, 'error');
     await updateRun(run.id, { status: 'error', error_message: e.message });
     onRunUpdate({ ...run, status: 'error' });
-    btn.disabled = false; btn.textContent = '⚡ Run Pipeline';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = _sourceMode === 'apify' ? '🗺️ Start Apify Search' : '⚡ Run AI Pipeline';
+    const stopBtn = document.getElementById('stopBtn');
+    if (stopBtn) { stopBtn.style.display = 'none'; stopBtn.disabled = false; stopBtn.textContent = '⏹'; }
+    _stopRequested = false;
   }
 };
 
@@ -429,8 +519,10 @@ function onRunUpdate(run) {
   if (run.status === 'completed' || run.status === 'completed_empty' || run.status === 'error') {
     subscription?.unsubscribe();
     chatSub?.unsubscribe();
-    document.getElementById('runBtn').disabled = false;
-    document.getElementById('runBtn').textContent = '⚡ Run Pipeline';
+    const rb = document.getElementById('runBtn');
+    if (rb) { rb.disabled = false; rb.innerHTML = _sourceMode === 'apify' ? '🗺️ Start Apify Search' : '⚡ Run AI Pipeline'; }
+    const sb = document.getElementById('stopBtn');
+    if (sb) { sb.style.display = 'none'; }
     const msg = run.status === 'error' ? run.error_message : `Done! ${run.emails_sent ?? 0} emails queued.`;
     toast(msg, run.status === 'error' ? 'error' : 'success');
   }
