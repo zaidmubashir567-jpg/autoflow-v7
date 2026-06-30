@@ -282,163 +282,224 @@ async function sendViaSmtp(
   return { ok: false, error: "SMTP via relay not yet configured — connect Gmail or add Resend key" };
 }
 
-// ── Email builder — branded header, styled audit card, dark footer ──────────
+// ── Email builder — premium branded HTML email ────────────────────
 function buildRawEmail(to: string, subject: string, body: string): string {
-  // ── 1. Split body on the ━━━ dividers used by run-pipeline ──────────────
-  // Body structure (from run-pipeline auditBlock):
-  //   \n━━━\n📊 QUICK AUDIT…\n━━━\n🤖 AI RECEPTIONIST…\n━━━\n\n[email body]
-  const DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
-  const rawParts = body.split(DIVIDER).map((p) => p.trim()).filter((p) => p.length > 0);
 
-  let emailBodyText = body;
-  let auditContent  = "";
-
-  if (rawParts.length >= 2) {
-    // Everything except the last chunk = audit sections; last chunk = email prose
-    auditContent  = rawParts.slice(0, rawParts.length - 1).join("\n\n");
-    emailBodyText = rawParts[rawParts.length - 1];
+  // ── 1. Split on DIVIDER — audit sections vs email prose ──────────
+  const DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
+  const parts   = body.split(DIVIDER).map(p => p.trim()).filter(p => p.length > 0);
+  let proseText  = body;
+  let auditText  = "";
+  if (parts.length >= 2) {
+    auditText = parts.slice(0, parts.length - 1).join("\n\n");
+    proseText = parts[parts.length - 1];
   }
 
-  // ── 2. Helpers ────────────────────────────────────────────────────────────
-  // Escape + linkify a block of text, preserving line breaks
-  function renderText(text: string): string {
-    return text
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/(https?:\/\/[^\s<>"]+)/g,
-        '<a href="$1" style="color:#6366f1;font-weight:600;word-break:break-all">$1</a>')
-      .replace(/\n/g, "<br>\n");
+  // ── 2. Sanitise helper ────────────────────────────────────────────
+  const esc = (s: string) => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+  // ── 3. Render email prose into clean HTML paragraphs ─────────────
+  function renderProse(text: string): string {
+    // Strip trailing signature block ("Best,\nTeam AttoLeads\nhttps://…")
+    // We'll render the signature ourselves in the footer
+    const sigRe = /\n+Best,?\n[\s\S]*$/i;
+    const cleanText = text.replace(sigRe, "").trim();
+
+    const paragraphs = cleanText.split(/\n{2,}/);
+    return paragraphs.map(para => {
+      const lines = para.split("\n").map(l => l.trimEnd());
+
+      // ── Bullet list ──
+      if (lines.some(l => /^[•\-\*]\s/.test(l))) {
+        const items = lines
+          .filter(l => /^[•\-\*]\s/.test(l))
+          .map(l => l.replace(/^[•\-\*]\s+/, ""))
+          .map(l => `<li style="margin:6px 0;color:#1e293b;line-height:1.6">${esc(l)}</li>`)
+          .join("");
+        const before = lines.filter(l => !/^[•\-\*]\s/.test(l)).map(l => esc(l)).join(" ");
+        return `${before ? `<p style="margin:0 0 8px;color:#334155;font-size:14px;line-height:1.7">${before}</p>` : ""}
+<ul style="margin:8px 0 16px 0;padding-left:20px">${items}</ul>`;
+      }
+
+      // ── Demo / preview link line (👉 URL) ──
+      const demoLineIdx = lines.findIndex(l => /👉|I built a free (preview|demo)|free demo/.test(l));
+      if (demoLineIdx !== -1) {
+        const demoLine = lines[demoLineIdx];
+        // Extract URL from the line
+        const urlMatch = demoLine.match(/https?:\/\/[^\s]+/);
+        // Only show real deployed URLs (Vercel pattern: af-demo-... or anything with a real domain)
+        // Fake placeholders look like "company-name-demo.vercel.app" (no af-demo- prefix, no timestamp hash)
+        const isFakeUrl = urlMatch && /^[a-z0-9-]+-demo\.vercel\.app$/.test(new URL(urlMatch[0]).hostname);
+
+        if (urlMatch && !isFakeUrl) {
+          const url = urlMatch[0];
+          const otherLines = lines.filter((_,i) => i !== demoLineIdx)
+            .map(l => esc(l)).join(" ").trim();
+          return `${otherLines ? `<p style="margin:0 0 12px;color:#334155;font-size:14px;line-height:1.7">${otherLines}</p>` : ""}
+<div style="text-align:center;margin:20px 0">
+  <a href="${esc(url)}" style="display:inline-block;background:linear-gradient(135deg,#4f46e5,#6366f1);
+     color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;
+     padding:13px 28px;border-radius:8px;letter-spacing:0.3px;
+     box-shadow:0 4px 14px rgba(79,70,229,0.35)">
+    👁 View Your Free Demo Site →
+  </a>
+</div>`;
+        } else {
+          // Fake URL — replace with a genuine offer
+          const otherLines = lines.filter((_,i) => i !== demoLineIdx)
+            .map(l => esc(l)).join("<br>").trim();
+          return `<p style="margin:0 0 12px;color:#334155;font-size:14px;line-height:1.7">${otherLines}</p>
+<div style="background:#f0f4ff;border-left:4px solid #6366f1;border-radius:0 8px 8px 0;padding:14px 18px;margin:16px 0">
+  <p style="margin:0;font-size:13.5px;color:#3730a3;font-weight:600;line-height:1.6">
+    💡 <strong>Free Demo:</strong> Reply to this email and I'll build a live preview of your new website — no strings attached. Usually ready within 24 hours.
+  </p>
+</div>`;
+        }
+      }
+
+      // ── CTA line ──
+      if (/worth a 10.minute call|schedule a call|book a call/i.test(para)) {
+        return `
+<div style="text-align:center;margin:28px 0 8px 0">
+  <a href="mailto:${esc(to)}" style="display:inline-block;background:linear-gradient(135deg,#4f46e5,#6366f1);
+     color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;
+     padding:14px 32px;border-radius:8px;letter-spacing:0.3px;
+     box-shadow:0 4px 14px rgba(79,70,229,0.35)">
+    📅 Book a Free 10-Minute Call
+  </a>
+  <p style="margin:10px 0 0;font-size:12px;color:#64748b">Just reply with a time that works — I'll send the calendar link.</p>
+</div>`;
+      }
+
+      // ── Normal paragraph ──
+      const rendered = lines.map(l => {
+        const safe = esc(l);
+        return safe.replace(/(https?:\/\/[^\s&<>"]+)/g,
+          '<a href="$1" style="color:#4f46e5;font-weight:600;text-decoration:underline">$1</a>');
+      }).join("<br>");
+      return `<p style="margin:0 0 14px;color:#1e293b;font-size:14px;line-height:1.75">${rendered}</p>`;
+    }).join("\n");
   }
 
-  // Render audit lines — each line gets its own row so emojis align nicely
-  function renderAuditLines(text: string): string {
-    return text
-      .split("\n")
-      .filter((l) => l.trim())
-      .map((line) => {
-        const safe = line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        // Section headers (📊 / 🤖) get a slightly larger style
-        const isHeader = /^[📊🤖]/.test(line);
-        return isHeader
-          ? `<div style="font-size:13px;font-weight:800;color:#a5b4fc;margin-top:4px;margin-bottom:6px;letter-spacing:0.3px">${safe}</div>`
-          : `<div style="font-size:12.5px;color:#cbd5e1;line-height:1.7;padding:2px 0 2px 8px;border-left:2px solid #3730a3">${safe}</div>`;
-      })
-      .join("\n");
+  // ── 4. Render audit card lines ────────────────────────────────────
+  function renderAudit(text: string): string {
+    return text.split("\n").filter(l => l.trim()).map(line => {
+      const safe = esc(line.trim());
+      if (/^📊/.test(line)) return `<div style="font-size:12px;font-weight:800;color:#fbbf24;letter-spacing:0.5px;text-transform:uppercase;margin:0 0 10px">${safe}</div>`;
+      if (/^🤖/.test(line)) return `<div style="font-size:12px;font-weight:800;color:#a78bfa;letter-spacing:0.5px;text-transform:uppercase;margin:14px 0 8px">${safe}</div>`;
+      if (/^⭐|^📱|^🌐|^🎯|^✅/.test(line)) return `
+<div style="display:flex;gap:10px;align-items:flex-start;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
+  <div style="font-size:13px;color:#94a3b8;line-height:1.5;flex:1">${safe}</div>
+</div>`;
+      return `<div style="font-size:12px;color:#64748b;line-height:1.6;padding:3px 0">${safe}</div>`;
+    }).join("");
   }
 
-  // ── 3. Build the HTML ─────────────────────────────────────────────────────
+  // ── 5. Assemble HTML ──────────────────────────────────────────────
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
 </head>
-<body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif">
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f1f5f9">
+<tr><td align="center" style="padding:24px 12px 0">
 
-  <!-- ═══ HEADER ═══ -->
-  <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+  <!-- ══ BRAND HEADER ══ -->
+  <table width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#4f46e5"
+         style="max-width:600px;border-radius:12px 12px 0 0;overflow:hidden">
     <tr>
-      <td style="background:linear-gradient(135deg,#4f46e5 0%,#6366f1 50%,#818cf8 100%);padding:0">
-        <table width="620" align="center" cellpadding="0" cellspacing="0" role="presentation"
-               style="max-width:620px;margin:0 auto">
+      <td style="padding:24px 36px 0 36px">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr>
-            <td style="padding:22px 32px 18px 32px">
-              <div style="color:#fff;font-size:26px;font-weight:900;letter-spacing:-1px;line-height:1">
-                AttoLeads
-              </div>
-              <div style="color:rgba(255,255,255,0.75);font-size:11px;margin-top:5px;letter-spacing:1.5px;text-transform:uppercase">
-                AI-Powered Lead Generation &amp; Outreach
-              </div>
+            <td>
+              <div style="font-size:24px;font-weight:900;color:#ffffff;letter-spacing:-0.5px;line-height:1">AttoLeads</div>
+              <div style="font-size:10px;color:rgba(255,255,255,0.65);margin-top:4px;text-transform:uppercase;letter-spacing:1.5px">AI-Powered Lead Generation</div>
             </td>
-            <td style="padding:22px 32px 18px 0;text-align:right;vertical-align:middle">
-              <a href="https://attoleads.com"
-                 style="background:rgba(255,255,255,0.15);color:#fff;text-decoration:none;
-                        font-size:11px;font-weight:700;padding:7px 16px;border-radius:20px;
-                        border:1px solid rgba(255,255,255,0.3);letter-spacing:0.5px">
-                attoleads.com ↗
-              </a>
+            <td align="right" valign="middle">
+              <a href="https://attoleads.com" style="display:inline-block;color:rgba(255,255,255,0.85);font-size:11px;font-weight:700;text-decoration:none;background:rgba(255,255,255,0.12);padding:6px 14px;border-radius:20px;border:1px solid rgba(255,255,255,0.25)">attoleads.com →</a>
             </td>
           </tr>
-          <!-- thin accent bar -->
-          <tr><td colspan="2" style="height:4px;background:linear-gradient(90deg,#fbbf24,#f59e0b,#fbbf24)"></td></tr>
         </table>
       </td>
     </tr>
+    <tr><td style="padding:0 0 0 0;height:20px"></td></tr>
+    <!-- Gold accent bar -->
+    <tr><td style="height:4px;background:linear-gradient(90deg,#fbbf24,#f59e0b,#fcd34d)"></td></tr>
   </table>
 
-  <!-- ═══ BODY CARD ═══ -->
-  <table width="620" align="center" cellpadding="0" cellspacing="0" role="presentation"
-         style="max-width:620px;margin:0 auto">
+  <!-- ══ BODY CARD ══ -->
+  <table width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff"
+         style="max-width:600px">
     <tr>
-      <td style="background:#ffffff;padding:32px 36px 28px 36px">
+      <td style="padding:36px 40px 28px 40px">
+        ${renderProse(proseText)}
+      </td>
+    </tr>
 
-        <!-- Email prose -->
-        <div style="font-size:14px;line-height:1.85;color:#1e293b;white-space:pre-wrap">
-          ${renderText(emailBodyText)}
+    ${auditText ? `
+    <!-- ══ AUDIT CARD ══ -->
+    <tr>
+      <td style="padding:0 40px 32px 40px">
+        <div style="background:#0f172a;border-radius:10px;padding:22px 24px;border-top:3px solid #fbbf24">
+          ${renderAudit(auditText)}
         </div>
+      </td>
+    </tr>` : ""}
+  </table>
 
-        ${auditContent ? `
-        <!-- ── Audit card ── -->
-        <div style="background:#0f172a;border-radius:12px;padding:22px 24px;margin:28px 0 8px 0;
-                    border-top:4px solid #fbbf24;box-shadow:0 4px 24px rgba(15,23,42,0.18)">
-          ${renderAuditLines(auditContent)}
-        </div>` : ""}
-
+  <!-- ══ SIGNATURE ══ -->
+  <table width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff"
+         style="max-width:600px;border-top:1px solid #f1f5f9">
+    <tr>
+      <td style="padding:20px 40px 28px">
+        <div style="font-size:13px;color:#475569;line-height:1.7">
+          Best,<br>
+          <strong style="color:#1e293b;font-size:14px">Team AttoLeads</strong><br>
+          <a href="https://attoleads.com" style="color:#4f46e5;font-size:12px;font-weight:600;text-decoration:none">https://attoleads.com</a>
+        </div>
       </td>
     </tr>
   </table>
 
-  <!-- ═══ FOOTER ═══ -->
-  <table width="620" align="center" cellpadding="0" cellspacing="0" role="presentation"
-         style="max-width:620px;margin:0 auto">
+  <!-- ══ FOOTER ══ -->
+  <table width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#0f172a"
+         style="max-width:600px;border-radius:0 0 12px 12px;overflow:hidden">
     <tr>
-      <td style="background:#0f172a;padding:24px 36px">
-        <!-- accent line -->
-        <div style="height:3px;background:linear-gradient(90deg,#6366f1,#818cf8,#6366f1);border-radius:2px;margin-bottom:18px"></div>
-
-        <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+      <td style="padding:22px 36px">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr>
-            <td style="vertical-align:top">
-              <div style="color:#e2e8f0;font-size:16px;font-weight:800;letter-spacing:-0.5px">AttoLeads</div>
-              <div style="color:#64748b;font-size:11px;margin-top:4px;line-height:1.6">
-                AI-powered lead generation<br>for local businesses
-              </div>
+            <td>
+              <div style="color:#e2e8f0;font-size:14px;font-weight:800">AttoLeads</div>
+              <div style="color:#475569;font-size:11px;margin-top:3px">AI-powered outreach for local businesses</div>
             </td>
-            <td style="vertical-align:top;text-align:right">
-              <a href="https://attoleads.com"
-                 style="color:#818cf8;font-size:12px;font-weight:700;text-decoration:none">
-                attoleads.com
-              </a><br>
-              <span style="color:#475569;font-size:10px">© ${new Date().getFullYear()} AttoLeads</span>
+            <td align="right" valign="top">
+              <a href="https://attoleads.com" style="color:#818cf8;font-size:11px;font-weight:700;text-decoration:none">attoleads.com</a><br>
+              <span style="color:#334155;font-size:10px">© ${new Date().getFullYear()} AttoLeads</span>
             </td>
           </tr>
         </table>
-
         <div style="margin-top:16px;padding-top:14px;border-top:1px solid #1e293b;
                     font-size:10px;color:#475569;text-align:center;line-height:1.6">
-          You are receiving this because your business matched our outreach criteria.
-          To unsubscribe, reply <span style="color:#94a3b8;font-weight:700">STOP</span> and we will remove you immediately.
+          You received this because your business matched our outreach criteria.
+          To unsubscribe, reply <strong style="color:#64748b">STOP</strong> and we will remove you immediately.
         </div>
       </td>
     </tr>
   </table>
 
+</td></tr>
+</table>
 </body>
 </html>`;
 
-  // ── 4. Encode to RFC 2822 base64url for Gmail API ─────────────────────────
+  // ── 6. Encode RFC 2822 / base64url for Gmail API ──────────────────
   const bytes = new TextEncoder().encode(
-    [
-      `To: ${to}`,
-      `Subject: ${subject}`,
-      "MIME-Version: 1.0",
-      "Content-Type: text/html; charset=utf-8",
-      "",
-      html
-    ].join("\r\n")
+    [`To: ${to}`, `Subject: ${subject}`, "MIME-Version: 1.0",
+     "Content-Type: text/html; charset=utf-8", "", html].join("\r\n")
   );
-
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
