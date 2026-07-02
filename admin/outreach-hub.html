@@ -48,7 +48,7 @@ document.getElementById('app').innerHTML = `
         <button class="btn" id="tabDM" onclick="setTab('dm')">
           Manual DM Queue <span id="dmCount" class="count-badge">…</span>
         </button>
-        <button class="btn" id="tabAll" onclick="setTab('all')">All Leads</button>
+        <button class="btn" id="tabAll" onclick="setTab('all')">📊 Campaign Status <span id="allCount" class="count-badge">…</span></button>
       </div>
 
       <div id="tabContent">Loading…</div>
@@ -162,6 +162,7 @@ document.getElementById('capCard').innerHTML = `
 
 document.getElementById('emailCount').textContent = emailQueue.length;
 document.getElementById('dmCount').textContent = dmQueue.length;
+document.getElementById('allCount').textContent = allLeads.length;
 
 // ── Tab switching ─────────────────────────────────────────────
 let activeTab = 'email';
@@ -630,22 +631,117 @@ window.skipDM = async function(itemId) {
   if (queue.length === 0) renderDMQueue();
 };
 
-// ── ALL LEADS ─────────────────────────────────────────────────
-function renderAllLeads() {
+// ── CAMPAIGNS VIEW — per-lead full sequence status ─────────────
+let _campaignsData = null;
+
+async function loadCampaignData() {
+  if (_campaignsData) return _campaignsData;
+  // Load ALL outreach_log entries for this client, grouped by lead
+  const res = await fetch(
+    `${SUPA}/rest/v1/outreach_log?client_id=eq.${clientId}&channel=eq.email&select=id,lead_id,subject,status,follow_up_seq,scheduled_at,sent_at&order=lead_id.asc,follow_up_seq.asc&limit=500`,
+    { headers:{ apikey:ANON, Authorization:`Bearer ${ANON}` } }
+  );
+  const rows = await res.json().catch(()=>[]);
+  // Group by lead_id
+  const groups = {};
+  if (Array.isArray(rows)) {
+    rows.forEach(r => {
+      if (!groups[r.lead_id]) groups[r.lead_id] = [];
+      groups[r.lead_id].push(r);
+    });
+  }
+  _campaignsData = groups;
+  return groups;
+}
+
+function seqPill(entry, label) {
+  if (!entry) {
+    return `<div style="text-align:center;padding:6px 10px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);min-width:70px">
+      <div style="font-size:9px;font-weight:700;color:#334155;margin-bottom:2px">${label}</div>
+      <div style="font-size:10px;color:#1e293b">—</div>
+    </div>`;
+  }
+  const s = entry.status;
+  let bg, color, icon, dateStr = '';
+  if (s === 'sent') {
+    bg = 'rgba(16,185,129,.15)'; color = '#10b981'; icon = '✅';
+    dateStr = entry.sent_at ? new Date(entry.sent_at).toLocaleDateString('en',{month:'short',day:'numeric'}) : '';
+  } else if (s === 'draft' || s === 'needs_sender') {
+    bg = 'rgba(245,158,11,.15)'; color = '#f59e0b'; icon = '⏳';
+    dateStr = 'Needs approval';
+  } else if (s === 'scheduled') {
+    bg = 'rgba(99,102,241,.15)'; color = '#818cf8'; icon = '📅';
+    dateStr = entry.scheduled_at ? new Date(entry.scheduled_at).toLocaleDateString('en',{month:'short',day:'numeric'}) : '';
+  } else if (s === 'failed') {
+    bg = 'rgba(239,68,68,.15)'; color = '#f87171'; icon = '❌'; dateStr = 'Failed';
+  } else {
+    bg = 'rgba(255,255,255,.04)'; color = '#64748b'; icon = '⏸'; dateStr = s;
+  }
+  return `<div style="text-align:center;padding:6px 10px;border-radius:8px;background:${bg};border:1px solid ${color}30;min-width:70px">
+    <div style="font-size:9px;font-weight:700;color:${color};margin-bottom:2px">${label}</div>
+    <div style="font-size:11px">${icon}</div>
+    <div style="font-size:9px;color:${color};margin-top:2px">${dateStr}</div>
+  </div>`;
+}
+
+async function renderAllLeads() {
   const el = document.getElementById('tabContent');
+  el.innerHTML = `<div style="text-align:center;padding:40px;color:#64748b">Loading campaign data…</div>`;
+
+  const groups = await loadCampaignData();
+
+  // Summary counts
+  const totalLeads = allLeads.length;
+  const sentCount  = allLeads.filter(l => groups[l.id]?.some(r => r.follow_up_seq === 0 && r.status === 'sent')).length;
+  const draftCount2 = allLeads.filter(l => groups[l.id]?.some(r => r.follow_up_seq === 0 && (r.status === 'draft' || r.status === 'needs_sender'))).length;
+
   el.innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px">
-      ${allLeads.map(l => `
-        <div class="card" style="padding:16px">
-          <div style="font-weight:600;margin-bottom:4px">${l.business_name}</div>
-          <div style="font-size:12px;color:var(--color-text-muted);margin-bottom:10px">${l.city}, ${l.state} · ${l.niche} · Score ${l.score}/10</div>
-          <div style="margin-bottom:8px">${channelBadge(l.contact_channels ?? [])}</div>
-          <div style="font-size:12px;color:var(--color-text-muted)">
-            ${l.email ? `✉️ ${l.email}` : '📧 No email found'}
-            ${l.do_not_contact ? ' · 🚫 DNC' : ''}
-          </div>
-          ${l.demo_url ? `<div style="margin-top:8px"><a href="${l.demo_url}" target="_blank" class="btn" style="font-size:11px;padding:5px 10px;text-decoration:none">🌐 View demo</a></div>` : ''}
-        </div>`).join('')}
+    <!-- Summary strip -->
+    <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+      <div style="background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.3);border-radius:10px;padding:12px 18px;flex:1;min-width:120px">
+        <div style="font-size:22px;font-weight:900;color:#10b981">${sentCount}</div>
+        <div style="font-size:12px;color:#94a3b8">Cold Emails Sent</div>
+      </div>
+      <div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:12px 18px;flex:1;min-width:120px">
+        <div style="font-size:22px;font-weight:900;color:#f59e0b">${draftCount2}</div>
+        <div style="font-size:12px;color:#94a3b8">Awaiting Approval</div>
+      </div>
+      <div style="background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.3);border-radius:10px;padding:12px 18px;flex:1;min-width:120px">
+        <div style="font-size:22px;font-weight:900;color:#818cf8">${totalLeads - sentCount - draftCount2}</div>
+        <div style="font-size:12px;color:#94a3b8">Follow-ups Scheduled</div>
+      </div>
+      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:12px 18px;flex:1;min-width:120px">
+        <div style="font-size:22px;font-weight:900;color:#f1f5f9">${totalLeads}</div>
+        <div style="font-size:12px;color:#94a3b8">Total Leads</div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:#475569;margin-bottom:12px">📌 Each row = one lead · 4 pills = Cold email + Day 3 + Day 7 + Day 14 follow-ups</div>
+
+    <!-- Lead rows -->
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${allLeads.map(l => {
+        const seqs = groups[l.id] || [];
+        const cold  = seqs.find(r => r.follow_up_seq === 0);
+        const day3  = seqs.find(r => r.follow_up_seq === 1);
+        const day7  = seqs.find(r => r.follow_up_seq === 2);
+        const day14 = seqs.find(r => r.follow_up_seq === 3);
+        const coldSent = cold?.status === 'sent';
+        return `
+          <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+            <div style="flex:1;min-width:160px">
+              <div style="font-weight:700;font-size:14px;color:#f1f5f9;margin-bottom:2px">${l.business_name}</div>
+              <div style="font-size:11px;color:#64748b">${l.city}, ${l.state} · ${l.niche} · ⭐ ${l.score}/10</div>
+              ${l.email ? `<div style="font-size:11px;color:#475569;margin-top:2px">✉️ ${l.email}</div>` : `<div style="font-size:11px;color:#ef4444;margin-top:2px">⚠️ No email</div>`}
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              ${seqPill(cold, 'COLD')}
+              ${seqPill(day3, 'DAY 3')}
+              ${seqPill(day7, 'DAY 7')}
+              ${seqPill(day14, 'DAY 14')}
+            </div>
+            ${!coldSent && cold ? `<button onclick="setTab('email')" class="btn" style="font-size:11px;padding:6px 12px;white-space:nowrap">⏳ Approve</button>` : ''}
+          </div>`;
+      }).join('')}
     </div>`;
 }
 
