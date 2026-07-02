@@ -88,6 +88,22 @@ allLeads = await getLeads(clientId);
 filtered  = [...allLeads];
 renderTable();
 
+function nicheColor(niche) {
+  const n = (niche || '').toLowerCase();
+  if (n.includes('hvac') || n.includes('heat') || n.includes('cool') || n.includes('air cond')) return '#3b82f6';
+  if (n.includes('plumb')) return '#06b6d4';
+  if (n.includes('rest') || n.includes('food') || n.includes('dining') || n.includes('cafe')) return '#ef4444';
+  if (n.includes('dental') || n.includes('dentist')) return '#10b981';
+  if (n.includes('roof')) return '#f97316';
+  if (n.includes('solar')) return '#eab308';
+  if (n.includes('electric')) return '#8b5cf6';
+  if (n.includes('landscap') || n.includes('lawn')) return '#22c55e';
+  if (n.includes('spa') || n.includes('salon')) return '#ec4899';
+  let hash = 0;
+  for (let i = 0; i < (niche||'').length; i++) hash = (niche.charCodeAt(i) + ((hash << 5) - hash)) | 0;
+  return ['#3b82f6','#06b6d4','#10b981','#f97316','#8b5cf6','#ec4899','#14b8a6','#f59e0b'][Math.abs(hash) % 8];
+}
+
 function getTemperature(lead) {
   if (lead.do_not_contact) return 'dead';
   switch (lead.stage) {
@@ -139,7 +155,7 @@ function renderTable() {
   const cols = [
     { key: 'business_name', label: 'Business',
       render: (v, r) => `<div style="font-weight:600">${v}</div><div style="font-size:11px;color:var(--color-text-muted)">${r.city}, ${r.state}</div>` },
-    { key: 'niche',  label: 'Niche',  render: v => `<span style="font-size:13px">${v ?? '—'}</span>` },
+    { key: 'niche',  label: 'Niche',  render: v => v ? `<span style="background:${nicheColor(v)};color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap">${v}</span>` : '<span style="color:var(--color-text-muted)">—</span>' },
     { key: 'score',  label: 'Score',  render: v => `<strong>${v}/10</strong>` },
     { key: 'stage',  label: 'Temp',   render: (_, r) => tempBadge(r) },
     { key: 'email',  label: 'Email',  render: (v, r) => v
