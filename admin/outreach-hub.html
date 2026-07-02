@@ -176,6 +176,28 @@ window.setTab = function(tab) {
   else renderAllLeads();
 };
 
+// ── NICHE COLOR HELPER ────────────────────────────────────────
+function nicheColor(niche) {
+  const n = (niche || '').toLowerCase();
+  if (n.includes('hvac') || n.includes('heat') || n.includes('cool') || n.includes('air cond')) return '#3b82f6';
+  if (n.includes('plumb')) return '#06b6d4';
+  if (n.includes('rest') || n.includes('food') || n.includes('dining') || n.includes('cafe')) return '#ef4444';
+  if (n.includes('dental') || n.includes('dentist')) return '#10b981';
+  if (n.includes('roof')) return '#f97316';
+  if (n.includes('solar')) return '#eab308';
+  if (n.includes('electric')) return '#8b5cf6';
+  if (n.includes('landscap') || n.includes('lawn')) return '#22c55e';
+  if (n.includes('spa') || n.includes('salon')) return '#ec4899';
+  if (n.includes('mechanic') || n.includes('auto')) return '#94a3b8';
+  let hash = 0;
+  for (let i = 0; i < (niche||'').length; i++) hash = (niche.charCodeAt(i) + ((hash << 5) - hash)) | 0;
+  return ['#3b82f6','#06b6d4','#10b981','#f97316','#8b5cf6','#ec4899','#14b8a6','#f59e0b'][Math.abs(hash) % 8];
+}
+function nicheBadge(niche) {
+  if (!niche) return '';
+  return `<span style="background:${nicheColor(niche)};color:#fff;font-size:10px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap;letter-spacing:.3px">${niche}</span>`;
+}
+
 // ── EMAIL QUEUE TAB ────────────────────────────────────────────
 let currentModalId = null;
 
@@ -247,7 +269,10 @@ function renderEmailQueue() {
           <div class="eq-header">
             <div style="flex:1;min-width:0">
               <div style="font-weight:700;font-size:15px;margin-bottom:2px">${lead.business_name || 'Business'} ${statusBadge}</div>
-              <div style="font-size:12px;color:var(--color-text-muted)">${lead.city || ''}, ${lead.state || ''} · ${lead.niche || ''} · Score ${lead.score || '?'}/10</div>
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px">
+                ${nicheBadge(lead.niche)}
+                <span style="font-size:12px;color:var(--color-text-muted)">${lead.city || ''}, ${lead.state || ''} · Score ${lead.score || '?'}/10</span>
+              </div>
               <div style="font-size:12px;margin-top:4px">
                 <span style="color:var(--color-text-muted)">To:</span>
                 <strong>${lead.email || '—'}</strong>
@@ -730,7 +755,10 @@ async function renderAllLeads() {
           <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
             <div style="flex:1;min-width:160px">
               <div style="font-weight:700;font-size:14px;color:#f1f5f9;margin-bottom:2px">${l.business_name}</div>
-              <div style="font-size:11px;color:#64748b">${l.city}, ${l.state} · ${l.niche} · ⭐ ${l.score}/10</div>
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px">
+                ${nicheBadge(l.niche)}
+                <span style="font-size:11px;color:#64748b">${l.city}, ${l.state} · ⭐ ${l.score}/10</span>
+              </div>
               ${l.email ? `<div style="font-size:11px;color:#475569;margin-top:2px">✉️ ${l.email}</div>` : `<div style="font-size:11px;color:#ef4444;margin-top:2px">⚠️ No email</div>`}
             </div>
             <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
