@@ -377,9 +377,10 @@ TASK: Return valid JSON only (no markdown, no backticks):
 SCORING GUIDE:
 9-10: <20 reviews or <3.5 stars + weak/no social + old website
 8: Any TWO of those gaps
-7: One clear gap + contactable
-6: Some opportunity + has contact method
-<6: Well-established, skip
+7: One clear gap + clearly contactable
+<7: Skip — not enough opportunity or not contactable
+
+IMPORTANT: Score 6 means skip. We only want HIGH-opportunity leads.
 
 Return ONLY the JSON object, nothing else.`;
 
@@ -405,14 +406,30 @@ Return ONLY the JSON object, nothing else.`;
   }
 
   const score = (parsed.score as number) ?? 0;
-  if (score < 6) {
+  if (score < 7) {
     await sb.from("pipeline_chat").insert({ run_id, client_id, role:"claude", type:"info",
       message:`⏭️ Skipping ${business_name} — score ${score}/10 (${parsed.score_reason})` });
-    return ok({ saved:false, skipped:true, reason:`Score ${score} below threshold`, business_name });
+    return ok({ saved:false, skipped:true, reason:`Score ${score} below threshold (need 7+)`, business_name });
   }
 
-  // 4. Save lead to DB
-  const place_id = `ai_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+  // 4a. Deduplicate — skip if same business+city already in DB for this client
+  const { data: existingLead } = await sb.from("leads")
+    .select("id")
+    .eq("client_id", client_id)
+    .ilike("business_name", business_name)
+    .ilike("city", city)
+    .maybeSingle();
+
+  if (existingLead) {
+    await sb.from("pipeline_chat").insert({ run_id, client_id, role:"claude", type:"info",
+      message:`⏭️ Skipping ${business_name} — already in database (dedup)` });
+    return ok({ saved:false, skipped:true, reason:"Duplicate — already in DB", business_name });
+  }
+
+  // 4b. Save lead to DB
+  const nameSlug = business_name.toLowerCase().replace(/[^a-z0-9]/g,"_").slice(0,30);
+  const citySlug = city.toLowerCase().replace(/[^a-z0-9]/g,"_").slice(0,20);
+  const place_id = `${nameSlug}_${citySlug}_${Date.now().toString(36).slice(-4)}`;
   // Safe owner name — never store "Not found"
   const rawOwner = (contact.ownerName || "").trim();
   const safeOwnerName = (rawOwner && rawOwner.toLowerCase() !== "not found" && rawOwner.length > 1)
