@@ -84,6 +84,9 @@ const auth = await requireAuth('admin');
 const clientId = await getClientId();
 const client   = await getClient(clientId);
 
+const SUPA = 'https://ndwvsrtyjnaddrifafqk.supabase.co';
+const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kd3ZzcnR5am5hZGRyaWZhZnFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4ODMxMDgsImV4cCI6MjA5MzQ1OTEwOH0.7XoOKB74DGiXac3cfSSiyvREuWZ7qbQ2QbxE6d1rnlM';
+
 // US State list
 const STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY',
   'LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK',
@@ -103,6 +106,28 @@ document.getElementById('app').innerHTML = `
       <p class="page-sub">LeadFyn finds businesses, enriches contacts across 10 channels, and sends outreach — you approve the sends.</p>
     </div>
     <div class="page-body">
+
+      <!-- ── 🎯 AI Niche Advisor ──────────────────────────────────── -->
+      <div class="card" id="nicheAdvisorCard" style="margin-bottom:24px;border:1px solid rgba(139,92,246,.4);background:rgba(139,92,246,.06)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid rgba(139,92,246,.2)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="font-size:20px">🎯</div>
+            <div>
+              <div style="font-weight:800;font-size:15px;color:#c4b5fd">AI Niche Advisor — July 2026</div>
+              <div style="font-size:12px;color:#64748b">Seasonal picks · Based on your niche history · Click any card to auto-fill</div>
+            </div>
+          </div>
+          <span id="advisorBadge" style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(139,92,246,.2);color:#c4b5fd;border:1px solid rgba(139,92,246,.4)">LOADING…</span>
+        </div>
+        <div id="nicheAdvisorContent" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+          ${[1,2,3].map(()=>`<div style="height:100px;background:rgba(255,255,255,.03);border-radius:10px;border:1px solid rgba(255,255,255,.07);animation:pulse 1.5s infinite"></div>`).join('')}
+        </div>
+        <div id="dupWarning" style="display:none;margin-top:12px;padding:10px 14px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;font-size:13px;color:#f87171">
+          ⚠️ <strong>Duplicate warning:</strong> <span id="dupWarningText"></span>
+        </div>
+      </div>
+      <style>@keyframes pulse{0%,100%{opacity:.4}50%{opacity:.8}}</style>
+
       <div style="display:grid;grid-template-columns:380px 1fr;gap:24px;align-items:start">
 
         <!-- Config panel -->
@@ -261,6 +286,92 @@ document.getElementById('app').innerHTML = `
     </div>
   </main>`;
 
+// ── 🎯 AI Niche Advisor ──────────────────────────────────────
+const JULY_PICKS = [
+  { niche:"HVAC Companies",       emoji:"❄️", reason:"Peak summer — ACs breaking down daily. Highest urgency, highest pay.", score:9.2, city:"Phoenix, AZ",    state:"AZ" },
+  { niche:"Plumbers",             emoji:"🔧", reason:"Summer renovations surge. High emergency call volume. Great email response.", score:8.7, city:"Houston, TX",  state:"TX" },
+  { niche:"Landscapers",          emoji:"🌿", reason:"Lawn season peak. Most still use word-of-mouth, no online presence.", score:8.4, city:"Denver, CO",    state:"CO" },
+  { niche:"Pool Service Companies",emoji:"🏊",reason:"Peak pool season. Families booking late-summer cleans. High value leads.",  score:8.8, city:"Dallas, TX",   state:"TX" },
+  { niche:"Roofers",              emoji:"🏠", reason:"Summer storm season = emergency repairs. Business owners check email often.", score:8.5, city:"Atlanta, GA",  state:"GA" },
+  { niche:"Electricians",         emoji:"⚡", reason:"AC installations + home office setups = surge in service calls.",            score:8.3, city:"Orlando, FL",  state:"FL" },
+];
+
+async function populateNicheAdvisor() {
+  try {
+    // Load niche memory from DB
+    const memRes = await fetch(
+      `${SUPA}/rest/v1/niche_memory?client_id=eq.${clientId}&order=avg_score.desc&limit=20`,
+      { headers:{ apikey:ANON, Authorization:`Bearer ${ANON}` } }
+    );
+    const memory = await memRes.json().catch(()=>[]);
+
+    // Load pipeline_runs from last 24h
+    const since24h = new Date(Date.now() - 24*60*60*1000).toISOString();
+    const runsRes = await fetch(
+      `${SUPA}/rest/v1/pipeline_runs?client_id=eq.${clientId}&created_at=gte.${since24h}&select=niche,city,created_at`,
+      { headers:{ apikey:ANON, Authorization:`Bearer ${ANON}` } }
+    );
+    const recentRuns = await runsRes.json().catch(()=>[]);
+    window._recentRuns = recentRuns;
+
+    // Build picks — combine seasonal + past performance
+    const memMap = {};
+    if (Array.isArray(memory)) {
+      memory.forEach(m => { memMap[`${m.niche}|${m.city}`] = m; });
+    }
+
+    // Top 3 picks = seasonal picks NOT run in last 24h
+    const recentKeys = new Set((Array.isArray(recentRuns)?recentRuns:[]).map(r=>`${r.niche}|${r.city}`));
+    let picks = JULY_PICKS.filter(p => !recentKeys.has(`${p.niche}|${p.city}`)).slice(0,3);
+    if (picks.length < 3) picks = JULY_PICKS.slice(0,3); // fallback
+
+    const advisorEl = document.getElementById('nicheAdvisorContent');
+    const badgeEl   = document.getElementById('advisorBadge');
+    if (badgeEl) badgeEl.textContent = `${picks.length} PICKS`;
+
+    advisorEl.innerHTML = picks.map((p, i) => {
+      const mem = memMap[`${p.niche}|${p.city}`];
+      const hasRun = recentKeys.has(`${p.niche}|${p.city}`);
+      const colors = ['rgba(99,102,241,.15)','rgba(139,92,246,.15)','rgba(59,130,246,.15)'];
+      const borders = ['rgba(99,102,241,.4)','rgba(139,92,246,.4)','rgba(59,130,246,.4)'];
+      const accentColors = ['#818cf8','#c4b5fd','#60a5fa'];
+      return `
+        <div onclick="advisorPick('${p.niche}','${p.city}','${p.state}')"
+          style="background:${colors[i]};border:1px solid ${borders[i]};border-radius:10px;padding:14px;cursor:pointer;transition:all .2s;position:relative"
+          onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 20px rgba(99,102,241,.2)'"
+          onmouseout="this.style.transform='none';this.style.boxShadow='none'">
+          ${hasRun ? `<div style="position:absolute;top:8px;right:8px;font-size:9px;font-weight:700;padding:2px 6px;border-radius:6px;background:rgba(239,68,68,.2);color:#f87171;border:1px solid rgba(239,68,68,.3)">RAN TODAY</div>` : `<div style="position:absolute;top:8px;right:8px;font-size:9px;font-weight:700;padding:2px 6px;border-radius:6px;background:rgba(16,185,129,.15);color:#10b981;border:1px solid rgba(16,185,129,.3)">#${i+1} PICK</div>`}
+          <div style="font-size:22px;margin-bottom:6px">${p.emoji}</div>
+          <div style="font-weight:800;font-size:13px;color:${accentColors[i]};margin-bottom:2px">${p.niche}</div>
+          <div style="font-size:11px;color:#64748b;margin-bottom:8px">📍 ${p.city}</div>
+          <div style="font-size:11px;color:#94a3b8;line-height:1.4">${p.reason}</div>
+          ${mem ? `<div style="margin-top:8px;font-size:10px;color:#10b981;font-weight:600">✓ Past run: avg score ${mem.avg_score}/10</div>` : ''}
+        </div>`;
+    }).join('');
+
+  } catch(e) {
+    document.getElementById('nicheAdvisorContent').innerHTML =
+      `<div style="color:#64748b;font-size:13px;padding:10px">Advisor unavailable — run pipeline manually</div>`;
+  }
+}
+
+window.advisorPick = function(niche, cityFull, state) {
+  const city = cityFull.split(',')[0].trim();
+  if (document.getElementById('nicheInput')) document.getElementById('nicheInput').value = niche;
+  if (document.getElementById('cityInput'))  document.getElementById('cityInput').value  = city;
+  if (document.getElementById('stateSelect')){
+    document.getElementById('stateSelect').value = state;
+  }
+  // Switch to Apify mode
+  if (window.setSourceMode) window.setSourceMode('apify');
+  toast(`✅ Picked: ${niche} in ${city} — adjust settings then click Run`, 'success');
+  // Scroll to config
+  document.getElementById('configPanel')?.scrollIntoView({ behavior:'smooth', block:'start' });
+};
+
+// Populate on load
+populateNicheAdvisor();
+
 // ── Source mode (Apify / AI) ─────────────────────────────────
 let _sourceMode = 'apify';
 
@@ -378,6 +489,28 @@ window.startPipeline = async function() {
   if (!city || !state || !niche) {
     toast('Please fill in state, city, and niche', 'warning'); return;
   }
+
+  // ── Duplicate run guard (24h cooldown) ──────────────────────
+  const recentRuns = window._recentRuns || [];
+  const dupRun = recentRuns.find(r =>
+    r.niche?.toLowerCase() === niche.toLowerCase() &&
+    r.city?.toLowerCase() === city.toLowerCase()
+  );
+  if (dupRun) {
+    const elapsed = Math.round((Date.now() - new Date(dupRun.created_at).getTime()) / 60000);
+    const dupWarn = document.getElementById('dupWarning');
+    const dupText = document.getElementById('dupWarningText');
+    if (dupWarn && dupText) {
+      dupText.textContent = `You already ran "${niche}" in "${city}" ${elapsed} minutes ago. Running again will just create duplicates. Choose a different niche or city, or wait 24 hours.`;
+      dupWarn.style.display = 'block';
+      dupWarn.scrollIntoView({ behavior:'smooth', block:'center' });
+    }
+    toast(`⚠️ Already ran ${niche} in ${city} (${elapsed}min ago) — change niche/city`, 'warning');
+    return;
+  }
+  // Hide warning if user changed the niche/city
+  const dupWarn = document.getElementById('dupWarning');
+  if (dupWarn) dupWarn.style.display = 'none';
 
   const maxItems = parseInt(document.getElementById('maxItemsRange')?.value ?? '20', 10);
   _stopRequested = false;
