@@ -42,10 +42,32 @@ function makeFollowUps(bizName: string, owner: string|null, niche: string, city:
     : null;
   const n = safeFirst ? ` ${safeFirst}` : "";
   return [
-    { seq:1, days:3,  subject:`Quick follow-up — ${bizName}`, body:`Hi${n},\n\nI reached out a few days ago about helping ${bizName} get more ${niche} clients in ${city}.\n\nJust wanted to make sure my message didn't get buried. The gap I spotted between you and your top local competitor is one we fix consistently — usually within 30 days.\n\nIs there a better time to connect this week?\n\n— AutoFlow AI` },
-    { seq:2, days:7,  subject:`Last try — ${bizName} growth opportunity`, body:`Hi${n},\n\nI don't want to keep filling your inbox, so this will be my last message.\n\nWe've helped ${niche} businesses in ${city} increase monthly leads by 30-60% using AI-powered review management + outreach. The businesses that act first tend to lock in the advantage.\n\nIf the timing ever makes sense, I'm here.\n\n— AutoFlow AI` },
-    { seq:3, days:14, subject:`${bizName} — one more thought`, body:`Hi${n},\n\nProbably not the right time — and that's totally fine.\n\nIf you ever want a free 10-minute audit of your online presence vs. your top ${city} competitors, just reply and I'll put it together. No pitch. Just data.\n\n— AutoFlow AI` },
+    { seq:1, days:3,  subject:`Quick follow-up — ${bizName}`, body:`Hi${n},\n\nI reached out a few days ago about helping ${bizName} get more ${niche} clients in ${city}.\n\nJust wanted to make sure my message didn't get buried. The gap I spotted between you and your top local competitor is one we fix consistently — usually within 30 days.\n\nIs there a better time to connect this week?\n\n— Zaid\nAttoLeads · attoleads.com` },
+    { seq:2, days:7,  subject:`Last try — ${bizName} growth opportunity`, body:`Hi${n},\n\nI don't want to keep filling your inbox, so this will be my last message.\n\nWe've helped ${niche} businesses in ${city} increase monthly leads by 30-60% using AI-powered review management + outreach. The businesses that act first tend to lock in the advantage.\n\nIf the timing ever makes sense, I'm here.\n\n— Zaid\nAttoLeads · attoleads.com` },
+    { seq:3, days:14, subject:`${bizName} — one more thought`, body:`Hi${n},\n\nProbably not the right time — and that's totally fine.\n\nIf you ever want a free 10-minute audit of your online presence vs. your top ${city} competitors, just reply and I'll put it together. No pitch. Just data.\n\n— Zaid\nAttoLeads · attoleads.com` },
   ];
+}
+
+// ── Email validator — block garbage before it hits the DB ─────────
+function isValidEmail(email: string | null): boolean {
+  if (!email || email.trim().length < 5) return false;
+  const e = email.trim().toLowerCase();
+  if (!e.includes('@') || !e.includes('.')) return false;
+  if (e.startsWith('+') || e.startsWith('%') || e.startsWith('@')) return false;
+  const badDomains = [
+    'businessname.com', 'duckduckgo.com', 'godaddy.com',
+    'example.com', 'test.com', 'domain.com', 'email.com',
+  ];
+  const badPatterns = [
+    'filler@', 'error-lite@', 'noreply@', 'no-reply@',
+    'info@businessname', 'email@', '@googlemail', 'schema.org',
+  ];
+  if (badDomains.some(d => e.endsWith(d))) return false;
+  if (badPatterns.some(p => e.includes(p))) return false;
+  // Reject GPS coordinates masquerading as emails (contain +digits or lat/long pattern)
+  if (/\+\d|%2[bc]/i.test(e)) return false;
+  const emailRegex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
+  return emailRegex.test(e);
 }
 
 // ── Fast DuckDuckGo search ────────────────────────────────────────
@@ -324,6 +346,13 @@ async function handleEnrich(body: Record<string,unknown>) {
   }
   const mergedPhone = prefetchPhone || contact.phone;
 
+  // 1b. Validate email — skip lead entirely if garbage/missing
+  if (!isValidEmail(contact.email)) {
+    await sb.from("pipeline_chat").insert({ run_id, client_id, role:"claude", type:"info",
+      message:`⏭️ Skipping ${business_name} — invalid or missing email: "${contact.email || "none"}"` });
+    return ok({ saved:false, skipped:true, reason:"Invalid email", business_name });
+  }
+
   // 2. Reviews search — skip if Apify already gave us rating + review count
   let reviewSnippet = "";
   if (!prefetchRating && !prefetchReviews) {
@@ -371,7 +400,7 @@ TASK: Return valid JSON only (no markdown, no backticks):
   "website_year": <estimated year site was built, e.g. 2018>,
   "top_fix": "<single highest-impact improvement for this business>",
   "email_subject": "<compelling subject line>",
-  "email_body": "<personalized 180-word email using the pain hook + their specific data. Structure: opening with pain hook + their real numbers | competitor comparison | one social proof line | what we specifically fix for their niche | free demo offer: 'Reply to this email and I will build a free live preview of your new website — ready within 24 hours, no strings attached.' | AI receptionist mention | closing: 'Is this worth a 10-minute call? Reply with a time that works and I\\'ll send you the calendar link.' Sign off with: 'Best,\\nTeam AttoLeads\\nhttps://attoleads.com' NO price, NO generic opener, NO fake URLs. ALWAYS sign as AttoLeads not any other name.>"
+  "email_body": "<personalized 180-word email using the pain hook + their specific data. Structure: opening with pain hook + their real numbers | competitor comparison | one social proof line | what we specifically fix for their niche | free demo offer: 'Reply to this email and I will build a free live preview of your new website — ready within 24 hours, no strings attached.' | AI receptionist mention | closing: 'Is this worth a 10-minute call? Reply with a time that works and I\\'ll send you the calendar link.' Sign off with: 'Best,\\nZaid\\nAttoLeads · https://attoleads.com' NO price, NO generic opener, NO fake URLs.>"
 }
 
 SCORING GUIDE:
