@@ -66,6 +66,7 @@ export function injectLeadFynTheme() {
 export function adminNav(activePage = '') {
   const links = [
     { href: '/admin/dashboard.html',        icon: '📊', label: 'Dashboard' },
+    { href: '/admin/automations.html', icon: '⚙️', label: 'Automations' },
     { href: '/admin/pipeline.html',         icon: '⚡', label: 'Pipeline' },
     { href: '/admin/leads.html',            icon: '👥', label: 'Leads' },
     { href: '/admin/pipeline-manager.html', icon: '🎯', label: 'Manager' },

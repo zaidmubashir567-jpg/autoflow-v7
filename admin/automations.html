@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Automations — LeadFyn</title>
+  <link rel="preconnect" href="https://ndwvsrtyjnaddrifafqk.supabase.co" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="modulepreload" href="/shared/auth.js">
+  <link rel="modulepreload" href="/shared/ui.js">
+  <link rel="modulepreload" href="/shared/db.js">
+  <link rel="modulepreload" href="/shared/api.js">  <link rel="stylesheet" href="/shared/attoleads-theme.css">
+</head>
+<body>
+<div id="app"></div>
+<script type="module">
+import { injectLeadFynTheme, injectSharedCSS, adminNav, toast } from '/shared/ui.js';
+import { requireAuth, getClientId } from '/shared/auth.js';
+injectLeadFynTheme();
+try { requireAuth(); } catch(e){}
+if (typeof injectSharedCSS === 'function') injectSharedCSS();
+const CID = (typeof getClientId==='function' && getClientId()) || 'dc076116-c6fa-4f27-ad91-cfbd2e871a48';
+const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kd3ZzcnR5am5hZGRyaWZhZnFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4ODMxMDgsImV4cCI6MjA5MzQ1OTEwOH0.7XoOKB74DGiXac3cfSSiyvREuWZ7qbQ2QbxE6d1rnlM';
+const BASE = 'https://ndwvsrtyjnaddrifafqk.supabase.co/rest/v1';
+const AUTOS = [
+  {n:'Daily auto-send', ic:'📤', cron:'0 21 * * *', d:'Sends the capped daily batch to verified leads at Phoenix morning, then emails you a report + call list.'},
+  {n:'Reply checker', ic:'📥', cron:'0 10 * * *', d:'Detects replies, cancels their follow-ups, sends warm-lead SMS if Twilio is set, and pings you.'},
+  {n:'Niche scoreboard', ic:'📊', cron:'0 19 * * 0', d:'Weekly per-niche reply/open/bounce report so you scale winners and cut losers.'},
+  {n:'Warmup ramp', ic:'📈', cron:'0 9 * * 1', d:'Weekly: raises the daily send cap 8 to 30 while bounces stay healthy.'}
+];
+function nextRun(cr){var p=cr.split(' ');var mi=+p[0],hr=+p[1],dom=p[2],dow=p[4];var now=new Date(),c;for(var i=1;i<=531360;i++){c=new Date(now.getTime()+i*60000);c.setSeconds(0,0);if(c<=now)continue;if(c.getMinutes()!==mi)continue;if(c.getHours()!==hr)continue;if(dow!=='*'&&c.getDay()!==+dow)continue;if(dom!=='*'&&c.getDate()!==+dom)continue;return c;}return null;}
+function fmt(dt){if(!dt)return '—';var dn=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];var h=dt.getHours(),m=dt.getMinutes(),ap=h>=12?'PM':'AM',h12=((h+11)%12)+1,mm=(m<10?'0':'')+m;var t=new Date();var sd=dt.toDateString()===t.toDateString();var tm=new Date(t.getTime()+864e5).toDateString()===dt.toDateString();var w=sd?'today':(tm?'tomorrow':dn[dt.getDay()]+' '+dt.getDate());return w+' '+h12+':'+mm+' '+ap;}
+function cd(dt){if(!dt)return '';var ms=dt-new Date();var h=Math.floor(ms/36e5),m=Math.floor((ms%36e5)/6e4);return h>0?('in '+h+'h '+m+'m'):('in '+m+'m');}
+var cardsHtml = AUTOS.map(function(a){return '<div class="card" style="padding:14px"><div style="font-weight:600;font-size:15px;color:var(--text,#111)">'+a.ic+' '+a.n+'</div><div style="margin-top:4px;font-size:13px;color:#2563eb;font-weight:500">Next: '+fmt(nextRun(a.cron))+' <span style="color:#9ca3af;font-weight:400">'+cd(nextRun(a.cron))+'</span></div><div style="margin-top:6px;font-size:12px;color:#6b7280;line-height:1.5">'+a.d+'</div></div>';}).join('');
+document.getElementById('app').innerHTML = adminNav('Automations') + '<main class="main"><div class="page-header"><h1>⚙️ Automations</h1><p style="color:#6b7280;font-size:13px;margin-top:2px">Run by your Cowork assistant while the app is open. This page mirrors the live schedule.</p></div><div class="page-body"><div id="autoLive" class="card" style="padding:12px 14px;font-size:13px;color:#6b7280">loading live status…</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-top:12px">'+cardsHtml+'</div><div class="card" style="margin-top:12px"><div class="card-title">Recent activity</div><div id="autoRuns" style="font-size:13px;color:#6b7280">loading…</div></div><div style="margin-top:10px;font-size:12px;color:#9ca3af">Times shown in your local timezone. Manage or pause these in the Cowork app\'s Scheduled panel.</div></div></main>';
+(async function(){
+  try{
+    var raw=localStorage.getItem('sb-ndwvsrtyjnaddrifafqk-auth-token');
+    if(!raw){document.getElementById('autoLive').textContent='sign in to see live status';return;}
+    var tok=JSON.parse(raw).access_token;
+    var H={apikey:ANON,Authorization:'Bearer '+tok,Prefer:'count=exact'};
+    var iso=new Date().toISOString().slice(0,10);
+    async function cnt(q){var r=await fetch(BASE+q,{headers:H});return r.ok?(r.headers.get('content-range')||'/?').split('/')[1]:'?';}
+    var sentToday=await cnt('/outreach_log?client_id=eq.'+CID+'&status=eq.sent&sent_at=gte.'+iso+'&select=id&limit=1');
+    var queue=await cnt('/outreach_log?client_id=eq.'+CID+'&status=eq.draft&select=id&limit=1');
+    var replies=await cnt('/outreach_log?client_id=eq.'+CID+'&replied=eq.true&select=id&limit=1');
+    document.getElementById('autoLive').innerHTML='<b>Live:</b> Sent today '+sentToday+' · Queue remaining '+queue+' · Total replies '+replies;
+    var lastSent=await fetch(BASE+'/outreach_log?client_id=eq.'+CID+'&status=eq.sent&order=sent_at.desc&select=sent_at&limit=1',{headers:H}).then(function(r){return r.json();});
+    var cap=await fetch(BASE+'/clients?id=eq.'+CID+'&select=daily_email_cap',{headers:H}).then(function(r){return r.json();});
+    var lastTxt = (lastSent&&lastSent[0]&&lastSent[0].sent_at)? new Date(lastSent[0].sent_at).toLocaleString() : 'no sends yet';
+    var capTxt = (cap&&cap[0])? cap[0].daily_email_cap : '?';
+    document.getElementById('autoRuns').innerHTML='<div style="line-height:1.9">• Last email sent: <b>'+lastTxt+'</b><br>• Current daily cap: <b>'+capTxt+'</b> (auto-ramps weekly)<br>• Reply checker + send run automatically at the times above.</div>';
+  }catch(e){var el=document.getElementById('autoLive'); if(el) el.textContent='live status unavailable';}
+})();
+</script>
+</body>
+</html>

@@ -12,7 +12,34 @@
   <link rel="modulepreload" href="/shared/api.js">
 
   <!-- ── 3D DARK OVERRIDES ───────────────────────────────── -->
-  <style>
+  <!-- __ATTO_AUTOMATIONS_CARD__ -->
+<div class="card" id="attoAutoCard">
+  <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+    <span>⚙️ Automations</span>
+    <a href="/admin/automations.html" style="font-size:12px;font-weight:400;color:#2563eb;text-decoration:none">Open full view →</a>
+  </div>
+  <div id="attoAutoLive" style="font-size:12px;color:#6b7280;margin:-2px 0 10px">loading live status…</div>
+  <div id="attoAutoCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px"></div>
+  <div id="attoAutoRuns" style="margin-top:10px;font-size:12px;color:#6b7280"></div>
+</div>
+<script>
+(function(){
+  var A=[
+    {n:'📤 Daily send',c:'0 21 * * *'},
+    {n:'📥 Reply check',c:'0 10 * * *'},
+    {n:'📊 Scoreboard',c:'0 19 * * 0'},
+    {n:'📈 Warmup ramp',c:'0 9 * * 1'}
+  ];
+  function nr(cr){var p=cr.split(" ");var mi=+p[0],hr=+p[1],dom=p[2],dow=p[4];var now=new Date(),c;for(var i=1;i<=531360;i++){c=new Date(now.getTime()+i*60000);c.setSeconds(0,0);if(c<=now)continue;if(c.getMinutes()!==mi)continue;if(c.getHours()!==hr)continue;if(dow!=="*"&&c.getDay()!==+dow)continue;if(dom!=="*"&&c.getDate()!==+dom)continue;return c;}return null;}
+  function fmt(dt){if(!dt)return "—";var d=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];var h=dt.getHours(),m=dt.getMinutes(),ap=h>=12?"PM":"AM",h12=((h+11)%12)+1,mm=(m<10?"0":"")+m;var t=new Date();var sd=dt.toDateString()===t.toDateString();var tm=new Date(t.getTime()+864e5).toDateString()===dt.toDateString();var w=sd?"today":(tm?"tmrw":d[dt.getDay()]);return w+" "+h12+":"+mm+" "+ap;}
+  var cont=document.getElementById("attoAutoCards");
+  if(cont){A.forEach(function(a){var el=document.createElement("div");el.style.cssText="border:1px solid #eef0f2;border-radius:8px;padding:8px;background:#fafafa";el.innerHTML="<div style=\"font-size:12px;font-weight:600;color:#111\">"+a.n+"</div><div style=\"margin-top:2px;font-size:11px;color:#2563eb;font-weight:500\">"+fmt(nr(a.c))+"</div>";cont.appendChild(el);});}
+  try{var raw=localStorage.getItem("sb-ndwvsrtyjnaddrifafqk-auth-token");if(raw){var tok=JSON.parse(raw).access_token;var anon="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kd3ZzcnR5am5hZGRyaWZhZnFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4ODMxMDgsImV4cCI6MjA5MzQ1OTEwOH0.7XoOKB74DGiXac3cfSSiyvREuWZ7qbQ2QbxE6d1rnlM";var base="https://ndwvsrtyjnaddrifafqk.supabase.co/rest/v1";var cid="dc076116-c6fa-4f27-ad91-cfbd2e871a48";var H={apikey:anon,Authorization:"Bearer "+tok,Prefer:"count=exact"};var iso=new Date().toISOString().slice(0,10);
+    Promise.all([fetch(base+"/outreach_log?client_id=eq."+cid+"&status=eq.sent&sent_at=gte."+iso+"&select=id&limit=1",{headers:H}),fetch(base+"/outreach_log?client_id=eq."+cid+"&status=eq.draft&select=id&limit=1",{headers:H}),fetch(base+"/outreach_log?client_id=eq."+cid+"&replied=eq.true&select=id&limit=1",{headers:H})]).then(function(rs){return Promise.all(rs.map(function(r){return r.headers.get("content-range");}));}).then(function(cr){function n(x){return x?x.split("/")[1]:"?";}var l=document.getElementById("attoAutoLive");if(l)l.innerHTML="Sent today: <b>"+n(cr[0])+"</b> · Queue: <b>"+n(cr[1])+"</b> · Replies: <b>"+n(cr[2])+"</b>";}).catch(function(){var l=document.getElementById("attoAutoLive");if(l)l.textContent="live status unavailable";});
+  }else{var l=document.getElementById("attoAutoLive");if(l)l.textContent="sign in to see live status";}}catch(e){}
+})();
+</script>
+<style>
     /* Depth tokens */
     :root {
       --d-bg:       #060614;
@@ -198,60 +225,6 @@
   <link rel="stylesheet" href="/shared/attoleads-theme.css">
 </head>
 <body>
-<!-- __ATTOLEADS_AUTOMATION_PANEL__ -->
-<div id="atto-automations" style="margin:16px;padding:16px;border:1px solid #e5e7eb;border-radius:14px;background:#fff;font-family:system-ui,-apple-system,sans-serif">
-  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-    <div style="font-size:16px;font-weight:600;color:#111">⚙️ Automations <span style="font-weight:400;color:#6b7280;font-size:13px">— run by your Cowork assistant while the app is open</span></div>
-    <div id="atto-live" style="font-size:13px;color:#6b7280">loading live status…</div>
-  </div>
-  <div id="atto-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px"></div>
-  <div style="margin-top:10px;font-size:12px;color:#9ca3af">Times shown in your local timezone. These schedules live in the Cowork app's Scheduled panel; this view mirrors them.</div>
-</div>
-<script>
-(function(){
-  var AUTOS=[
-    {name:'Daily auto-send',icon:'📤',cron:'0 21 * * *',desc:'Sends the capped daily batch to verified leads, then emails you a report + call list.'},
-    {name:'Reply checker',icon:'📥',cron:'0 10 * * *',desc:'Detects replies, cancels their follow-ups, sends warm-lead SMS (if Twilio set), pings you.'},
-    {name:'Niche scoreboard',icon:'📊',cron:'0 19 * * 0',desc:'Weekly per-niche reply/open/bounce report to help you scale winners, cut losers.'},
-    {name:'Warmup ramp',icon:'📈',cron:'0 9 * * 1',desc:'Weekly: raises daily send cap 8→12→18→25→30 when bounces stay healthy.'}
-  ];
-  function nextRun(cron){
-    var p=cron.split(' '); var min=+p[0], hr=+p[1], dom=p[2], dow=p[4];
-    var now=new Date(); var c=new Date(now.getTime());
-    c.setSeconds(0,0);
-    for(var i=0;i<=370*24*60;i++){
-      c=new Date(now.getTime()+i*60000); c.setSeconds(0,0);
-      if(c<=now) continue;
-      if(c.getMinutes()!==min) continue;
-      if(c.getHours()!==hr) continue;
-      if(dow!=='*' && c.getDay()!==+dow) continue;
-      if(dom!=='*' && c.getDate()!==+dom) continue;
-      return c;
-    }
-    return null;
-  }
-  function fmt(dt){ if(!dt) return '—'; var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; var h=dt.getHours(), m=dt.getMinutes(); var ap=h>=12?'PM':'AM'; var h12=((h+11)%12)+1; var mm=(m<10?'0':'')+m; var today=new Date(); var sameDay=dt.toDateString()===today.toDateString(); var tmr=new Date(today.getTime()+86400000).toDateString()===dt.toDateString(); var when=sameDay?'today':(tmr?'tomorrow':days[dt.getDay()]+' '+dt.getDate()); return when+' '+h12+':'+mm+' '+ap; }
-  function countdown(dt){ if(!dt) return ''; var ms=dt-new Date(); var h=Math.floor(ms/3600000); var m=Math.floor((ms%3600000)/60000); return h>0?('in '+h+'h '+m+'m'):('in '+m+'m'); }
-  var cont=document.getElementById('atto-cards');
-  if(cont){ AUTOS.forEach(function(a){ var nr=nextRun(a.cron); var el=document.createElement('div'); el.style.cssText='border:1px solid #eef0f2;border-radius:12px;padding:12px;background:#fafafa'; el.innerHTML='<div style="font-weight:600;font-size:14px;color:#111">'+a.icon+' '+a.name+'</div><div style="margin-top:4px;font-size:13px;color:#2563eb;font-weight:500">Next: '+fmt(nr)+' <span style="color:#9ca3af;font-weight:400">'+countdown(nr)+'</span></div><div style="margin-top:6px;font-size:12px;color:#6b7280;line-height:1.5">'+a.desc+'</div>'; cont.appendChild(el); }); }
-  try{
-    var raw=localStorage.getItem('sb-ndwvsrtyjnaddrifafqk-auth-token');
-    if(raw){ var tok=JSON.parse(raw).access_token; var anon='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kd3ZzcnR5am5hZGRyaWZhZnFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4ODMxMDgsImV4cCI6MjA5MzQ1OTEwOH0.7XoOKB74DGiXac3cfSSiyvREuWZ7qbQ2QbxE6d1rnlM'; var base='https://ndwvsrtyjnaddrifafqk.supabase.co/rest/v1'; var cid='dc076116-c6fa-4f27-ad91-cfbd2e871a48'; var H={apikey:anon,Authorization:'Bearer '+tok,Prefer:'count=exact'};
-      var today=new Date(); var iso=today.toISOString().slice(0,10);
-      Promise.all([
-        fetch(base+'/outreach_log?client_id=eq.'+cid+'&status=eq.sent&sent_at=gte.'+iso+'&select=id&limit=1',{headers:H}),
-        fetch(base+'/outreach_log?client_id=eq.'+cid+'&status=eq.draft&select=id&limit=1',{headers:H}),
-        fetch(base+'/outreach_log?client_id=eq.'+cid+'&replied=eq.true&select=id&limit=1',{headers:H})
-      ]).then(function(rs){return Promise.all(rs.map(function(r){return r.headers.get('content-range');}));}).then(function(cr){
-        function n(x){return x?x.split('/')[1]:'?';}
-        var live=document.getElementById('atto-live');
-        if(live) live.innerHTML='Sent today: <b>'+n(cr[0])+'</b> · Queue: <b>'+n(cr[1])+'</b> · Replies: <b>'+n(cr[2])+'</b>';
-      }).catch(function(){var l=document.getElementById('atto-live'); if(l) l.textContent='live status unavailable';});
-    } else { var l=document.getElementById('atto-live'); if(l) l.textContent='sign in to see live status'; }
-  }catch(e){}
-})();
-</script>
-
 <div id="app">Loading…</div>
 
 <script type="module">
