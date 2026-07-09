@@ -95,6 +95,13 @@ export async function getChannels(leadId) {
 // ─── OUTREACH LOG ────────────────────────────────────────────
 
 export async function logOutreach(entry) {
+  /* __ATTOLEADS_SIG_PATCH__ appended signature to every generated draft */
+  try{ if(entry && entry.body && entry.channel!=='sms' && !/attoleads\.com/i.test(entry.body)){
+    var __isHtml=/<\s*(p|div|br|html)[\s>]/i.test(entry.body);
+    var __sigH='<br><br><p style="color:#666;font-size:13px">--<br>Zaid Mubashir<br>AttoLeads \u2014 websites, SEO &amp; AI chatbots for local businesses<br><a href="https://attoleads.com">attoleads.com</a><br><br>If you\u2019d rather not hear from me, just reply \u201Cunsubscribe\u201D and I won\u2019t email you again.</p>';
+    var __sigT='\n\n--\nZaid Mubashir\nAttoLeads \u2014 websites, SEO & AI chatbots for local businesses\nhttps://attoleads.com\n\nIf you\u2019d rather not hear from me, just reply \u201Cunsubscribe\u201D and I won\u2019t email you again.';
+    entry.body += (__isHtml?__sigH:__sigT);
+  } }catch(__e){}
   const { data, error } = await supabase
     .from('outreach_log').insert(entry).select().single();
   if (error) throw error;  // RLS will block if do_not_contact = true

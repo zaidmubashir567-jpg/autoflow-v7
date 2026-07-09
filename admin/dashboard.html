@@ -198,6 +198,60 @@
   <link rel="stylesheet" href="/shared/attoleads-theme.css">
 </head>
 <body>
+<!-- __ATTOLEADS_AUTOMATION_PANEL__ -->
+<div id="atto-automations" style="margin:16px;padding:16px;border:1px solid #e5e7eb;border-radius:14px;background:#fff;font-family:system-ui,-apple-system,sans-serif">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    <div style="font-size:16px;font-weight:600;color:#111">⚙️ Automations <span style="font-weight:400;color:#6b7280;font-size:13px">— run by your Cowork assistant while the app is open</span></div>
+    <div id="atto-live" style="font-size:13px;color:#6b7280">loading live status…</div>
+  </div>
+  <div id="atto-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px"></div>
+  <div style="margin-top:10px;font-size:12px;color:#9ca3af">Times shown in your local timezone. These schedules live in the Cowork app's Scheduled panel; this view mirrors them.</div>
+</div>
+<script>
+(function(){
+  var AUTOS=[
+    {name:'Daily auto-send',icon:'📤',cron:'0 21 * * *',desc:'Sends the capped daily batch to verified leads, then emails you a report + call list.'},
+    {name:'Reply checker',icon:'📥',cron:'0 10 * * *',desc:'Detects replies, cancels their follow-ups, sends warm-lead SMS (if Twilio set), pings you.'},
+    {name:'Niche scoreboard',icon:'📊',cron:'0 19 * * 0',desc:'Weekly per-niche reply/open/bounce report to help you scale winners, cut losers.'},
+    {name:'Warmup ramp',icon:'📈',cron:'0 9 * * 1',desc:'Weekly: raises daily send cap 8→12→18→25→30 when bounces stay healthy.'}
+  ];
+  function nextRun(cron){
+    var p=cron.split(' '); var min=+p[0], hr=+p[1], dom=p[2], dow=p[4];
+    var now=new Date(); var c=new Date(now.getTime());
+    c.setSeconds(0,0);
+    for(var i=0;i<=370*24*60;i++){
+      c=new Date(now.getTime()+i*60000); c.setSeconds(0,0);
+      if(c<=now) continue;
+      if(c.getMinutes()!==min) continue;
+      if(c.getHours()!==hr) continue;
+      if(dow!=='*' && c.getDay()!==+dow) continue;
+      if(dom!=='*' && c.getDate()!==+dom) continue;
+      return c;
+    }
+    return null;
+  }
+  function fmt(dt){ if(!dt) return '—'; var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; var h=dt.getHours(), m=dt.getMinutes(); var ap=h>=12?'PM':'AM'; var h12=((h+11)%12)+1; var mm=(m<10?'0':'')+m; var today=new Date(); var sameDay=dt.toDateString()===today.toDateString(); var tmr=new Date(today.getTime()+86400000).toDateString()===dt.toDateString(); var when=sameDay?'today':(tmr?'tomorrow':days[dt.getDay()]+' '+dt.getDate()); return when+' '+h12+':'+mm+' '+ap; }
+  function countdown(dt){ if(!dt) return ''; var ms=dt-new Date(); var h=Math.floor(ms/3600000); var m=Math.floor((ms%3600000)/60000); return h>0?('in '+h+'h '+m+'m'):('in '+m+'m'); }
+  var cont=document.getElementById('atto-cards');
+  if(cont){ AUTOS.forEach(function(a){ var nr=nextRun(a.cron); var el=document.createElement('div'); el.style.cssText='border:1px solid #eef0f2;border-radius:12px;padding:12px;background:#fafafa'; el.innerHTML='<div style="font-weight:600;font-size:14px;color:#111">'+a.icon+' '+a.name+'</div><div style="margin-top:4px;font-size:13px;color:#2563eb;font-weight:500">Next: '+fmt(nr)+' <span style="color:#9ca3af;font-weight:400">'+countdown(nr)+'</span></div><div style="margin-top:6px;font-size:12px;color:#6b7280;line-height:1.5">'+a.desc+'</div>'; cont.appendChild(el); }); }
+  try{
+    var raw=localStorage.getItem('sb-ndwvsrtyjnaddrifafqk-auth-token');
+    if(raw){ var tok=JSON.parse(raw).access_token; var anon='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kd3ZzcnR5am5hZGRyaWZhZnFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4ODMxMDgsImV4cCI6MjA5MzQ1OTEwOH0.7XoOKB74DGiXac3cfSSiyvREuWZ7qbQ2QbxE6d1rnlM'; var base='https://ndwvsrtyjnaddrifafqk.supabase.co/rest/v1'; var cid='dc076116-c6fa-4f27-ad91-cfbd2e871a48'; var H={apikey:anon,Authorization:'Bearer '+tok,Prefer:'count=exact'};
+      var today=new Date(); var iso=today.toISOString().slice(0,10);
+      Promise.all([
+        fetch(base+'/outreach_log?client_id=eq.'+cid+'&status=eq.sent&sent_at=gte.'+iso+'&select=id&limit=1',{headers:H}),
+        fetch(base+'/outreach_log?client_id=eq.'+cid+'&status=eq.draft&select=id&limit=1',{headers:H}),
+        fetch(base+'/outreach_log?client_id=eq.'+cid+'&replied=eq.true&select=id&limit=1',{headers:H})
+      ]).then(function(rs){return Promise.all(rs.map(function(r){return r.headers.get('content-range');}));}).then(function(cr){
+        function n(x){return x?x.split('/')[1]:'?';}
+        var live=document.getElementById('atto-live');
+        if(live) live.innerHTML='Sent today: <b>'+n(cr[0])+'</b> · Queue: <b>'+n(cr[1])+'</b> · Replies: <b>'+n(cr[2])+'</b>';
+      }).catch(function(){var l=document.getElementById('atto-live'); if(l) l.textContent='live status unavailable';});
+    } else { var l=document.getElementById('atto-live'); if(l) l.textContent='sign in to see live status'; }
+  }catch(e){}
+})();
+</script>
+
 <div id="app">Loading…</div>
 
 <script type="module">
@@ -308,6 +362,43 @@ document.getElementById('app').innerHTML = `
             Super Brain will appear here when a pipeline is running. <a href="/admin/pipeline.html" style="color:#818cf8">Start a run →</a>
           </div>
         </div>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div class="card-title" style="margin:0">📬 Email Engagement</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span id="engScanTime" style="font-size:11px;color:#64748b"></span>
+            <button id="engScanBtn" onclick="runEngagementScan()" style="padding:7px 14px;font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;background:linear-gradient(135deg,#6366f1,#818cf8);border:none;color:#fff;box-shadow:0 2px 10px rgba(99,102,241,.25)">🔄 Run scan now</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-top:14px">
+          <div style="padding:14px;border-radius:10px;background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.14)">
+            <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px">Sent</div>
+            <div id="engSent" style="font-size:24px;font-weight:800;color:#f1f5f9;margin-top:4px">—</div>
+          </div>
+          <div style="padding:14px;border-radius:10px;background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.14)">
+            <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px">Opened</div>
+            <div id="engOpened" style="font-size:24px;font-weight:800;color:#38bdf8;margin-top:4px">—</div>
+          </div>
+          <div style="padding:14px;border-radius:10px;background:rgba(52,211,153,.06);border:1px solid rgba(52,211,153,.14)">
+            <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px">Replied</div>
+            <div id="engReplied" style="font-size:24px;font-weight:800;color:#34d399;margin-top:4px">—</div>
+          </div>
+          <div style="padding:14px;border-radius:10px;background:rgba(248,113,113,.06);border:1px solid rgba(248,113,113,.14)">
+            <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px">Bounced</div>
+            <div id="engBounced" style="font-size:24px;font-weight:800;color:#f87171;margin-top:4px">—</div>
+          </div>
+        </div>
+        <div style="margin-top:16px">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:#94a3b8;margin-bottom:5px">
+            <span>🔥 Warmup progress</span><span id="warmupLabel" style="color:#34d399;font-weight:700">—</span>
+          </div>
+          <div style="height:9px;background:rgba(255,255,255,.06);border-radius:5px;overflow:hidden">
+            <div id="warmupBar" style="height:9px;width:0%;background:linear-gradient(90deg,#34d399,#10b981);border-radius:5px;transition:width .5s"></div>
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-top:5px">Sending cap climbs weekly toward 30/day as your domain earns trust.</div>
+        </div>
+        <div style="font-size:11px;color:#64748b;margin-top:12px">Opens are tracked on new emails sent from now on. Replies &amp; bounces are read from your Gmail each scan.</div>
       </div>
       <div class="dash-two-col" style="margin-top:0">
         <div class="card">
@@ -672,7 +763,7 @@ function setBrainActive(msg, isRunning) {
 // ── System Status Bar ─────────────────────────────────────────────
 (async () => {
   try {
-    const { data: clientRow } = await _sb.from('clients').select('gmail_access_token,apify_key,claude_key').eq('id', clientId).single();
+    const { data: clientRow } = await _sb.from('clients').select('gmail_access,apify_key,claude_key').eq('id', clientId).single();
     const { data: scheduledEmails } = await _sb.from('outreach_log').select('id', { count: 'exact', head: true }).eq('client_id', clientId).eq('status', 'scheduled');
     const { data: runningRuns }     = await _sb.from('pipeline_runs').select('id', { count: 'exact', head: true }).eq('client_id', clientId).eq('status', 'running');
     const { data: apifyRuns }       = await _sb.from('pipeline_runs').select('id', { count: 'exact', head: true }).eq('client_id', clientId).eq('status', 'paused_approval').ilike('agent_message', '%Apify%');
@@ -680,7 +771,7 @@ function setBrainActive(msg, isRunning) {
     const pipelineRunning = (runningRuns?.length ?? 0) > 0 || runs.some(r => r.status === 'running');
     const followupCount   = scheduledEmails?.length ?? 0;
     const apifyPending    = apifyRuns?.length ?? 0;
-    const gmailOk         = !!(clientRow?.gmail_access_token);
+    const gmailOk         = !!(clientRow?.gmail_access);
     const apifyOk         = !!(clientRow?.apify_key);
 
     const pill = (id, bg, border, color, text) => {
@@ -717,10 +808,38 @@ function setBrainActive(msg, isRunning) {
   } catch(e) { console.warn('[status bar]', e); }
 })();
 
+// ── Auto-refresh: keep the dashboard live without manual reloads ──
+window.dismissApify = function(id){
+  try { const d = JSON.parse(localStorage.getItem('af_dismissed_apify')||'[]'); if(!d.includes(id)){ d.push(id); localStorage.setItem('af_dismissed_apify', JSON.stringify(d)); } } catch(_){}
+  const el = document.getElementById('apify-card-'+id); if (el) el.remove();
+};
+(function(){
+  window.__afLoadedAt = Date.now();
+  // Re-sync when you switch back to this tab (if it's been sitting a while)
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && Date.now() - window.__afLoadedAt > 15000) location.reload();
+  });
+  // Keep engagement numbers fresh, and do a full refresh if left open a long time
+  setInterval(() => { if (!document.hidden && window.loadEngagement) window.loadEngagement(); }, 30000);
+  setInterval(() => { if (!document.hidden && Date.now() - window.__afLoadedAt > 150000) location.reload(); }, 30000);
+})();
+
+// ── Warmup meter ──────────────────────────────────────────────────
+window.loadWarmup = async function(){
+  try {
+    const { data: c } = await _sb.from('clients').select('daily_email_cap').eq('id', clientId).single();
+    const cap = c?.daily_email_cap || 0;
+    const pctW = Math.min(100, Math.round(cap / 30 * 100));
+    const bar = document.getElementById('warmupBar'); if (bar) bar.style.width = pctW + '%';
+    const lbl = document.getElementById('warmupLabel'); if (lbl) lbl.textContent = cap + ' of 30 emails/day';
+  } catch(e){ console.warn('[warmup]', e); }
+};
+window.loadWarmup();
+
 // ── Apify Import Leads Panel ──────────────────────────────────────
 (async () => {
   try {
-    const { data: apifyImportRuns } = await _sb.from('pipeline_runs')
+    let { data: apifyImportRuns } = await _sb.from('pipeline_runs')
       .select('id,niche,city,state,status,leads_found,leads_qualified,agent_message,created_at,completed_at')
       .eq('client_id', clientId)
       .ilike('agent_message', '%Apify%')
@@ -728,7 +847,8 @@ function setBrainActive(msg, isRunning) {
       .order('created_at', { ascending: false })
       .limit(5);
 
-    if (!apifyImportRuns || apifyImportRuns.length === 0) return;
+    try { const __dis = JSON.parse(localStorage.getItem('af_dismissed_apify')||'[]'); apifyImportRuns = (apifyImportRuns||[]).filter(r => !__dis.includes(r.id)); } catch(_){}
+    if (!apifyImportRuns || apifyImportRuns.length === 0) { const p = document.getElementById('apifyImportPanel'); if (p) p.style.display = 'none'; return; }
 
     const panel = document.getElementById('apifyImportPanel');
     const sub   = document.getElementById('apifyImportSub');
@@ -746,7 +866,7 @@ function setBrainActive(msg, isRunning) {
       const date   = new Date(r.created_at).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
       const btnBase = 'padding:6px 14px;font-size:12px;font-weight:700;border-radius:7px;cursor:pointer;transition:all .2s;';
 
-      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;
+      return `<div id="apify-card-${r.id}" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;
                 background:rgba(99,102,241,.05);border:1px solid rgba(99,102,241,.12);border-radius:10px;gap:10px;flex-wrap:wrap">
         <div>
           <div style="font-size:13px;font-weight:700;color:#e2e8f0">📥 ${r.niche || 'restaurant'} in ${r.city || '?'}</div>
@@ -754,6 +874,7 @@ function setBrainActive(msg, isRunning) {
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <span class="status-pill status-${r.status}">${r.status}</span>
+          <button onclick="dismissApify('${r.id}')" title="Dismiss" style="background:none;border:none;color:#94a3b8;font-size:18px;line-height:1;cursor:pointer;padding:0 4px">×</button>
           ${done ? `
           <button onclick="location.href='/admin/leads.html'" style="${btnBase}background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.3);color:#818cf8"
             onmouseover="this.style.background='rgba(99,102,241,.22)'" onmouseout="this.style.background='rgba(99,102,241,.12)'">👁 View Leads</button>
@@ -811,6 +932,41 @@ if (runs.length > 0) {
       </div>`;
   }
 }
+
+// ── Email Engagement Panel ───────────────────────────────────────
+window.loadEngagement = async function() {
+  try {
+    const q = (extra) => {
+      let b = _sb.from('outreach_log').select('*', { count: 'exact', head: true })
+        .eq('client_id', clientId).eq('status', 'sent');
+      if (extra) b = extra(b);
+      return b;
+    };
+    const [sent, opened, replied, bounced] = await Promise.all([
+      q(),
+      q(b => b.eq('opened', true)),
+      q(b => b.eq('replied', true)),
+      q(b => b.eq('bounced', true)),
+    ]);
+    const s = sent.count || 0, o = opened.count || 0, r = replied.count || 0, bo = bounced.count || 0;
+    const pct = (n) => s ? ' · ' + Math.round(n / s * 100) + '%' : '';
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    set('engSent', String(s));
+    set('engOpened', o + pct(o));
+    set('engReplied', r + pct(r));
+    set('engBounced', bo + pct(bo));
+  } catch (e) { console.warn('[engagement]', e); }
+};
+window.runEngagementScan = async function() {
+  const btn = document.getElementById('engScanBtn');
+  if (btn) { btn.textContent = '⏳ Scanning…'; btn.disabled = true; }
+  try { await _sb.functions.invoke('scan-engagement', { body: {} }); } catch (e) { console.warn('[scan]', e); }
+  await window.loadEngagement();
+  const t = document.getElementById('engScanTime');
+  if (t) t.textContent = 'Last scanned ' + new Date().toLocaleTimeString();
+  if (btn) { btn.textContent = '🔄 Run scan now'; btn.disabled = false; }
+};
+window.loadEngagement();
 
 // ── Follow-up Queue ──────────────────────────────────────────────
 (async () => {
