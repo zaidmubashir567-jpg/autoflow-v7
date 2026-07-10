@@ -20,7 +20,8 @@ const CID = (typeof getClientId==='function' && getClientId()) || 'dc076116-c6fa
 const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kd3ZzcnR5am5hZGRyaWZhZnFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4ODMxMDgsImV4cCI6MjA5MzQ1OTEwOH0.7XoOKB74DGiXac3cfSSiyvREuWZ7qbQ2QbxE6d1rnlM';
 const BASE = 'https://ndwvsrtyjnaddrifafqk.supabase.co/rest/v1';
 const AUTOS = [
-  {n:'Daily auto-send', ic:'📤', cron:'0 21 * * *', d:'Sends the capped daily batch to verified leads at Phoenix morning, then emails you a report + call list.'},
+    {n:'Daily new sends', ic:'📤', cron:'0 21 * * *', d:'Sends 8 NEW named recipients each Phoenix morning (role addresses paused), then emails you a report + call list.'},
+    {n:'Daily follow-ups', ic:'📨', cron:'0 22 * * *', d:'Sends up to 8 due follow-ups (2nd/3rd touches) to leads who have not replied — kept separate from new sends.'},
   {n:'Reply checker', ic:'📥', cron:'0 10 * * *', d:'Detects replies, cancels their follow-ups, sends warm-lead SMS if Twilio is set, and pings you.'},
   {n:'Niche scoreboard', ic:'📊', cron:'0 19 * * 0', d:'Weekly per-niche reply/open/bounce report so you scale winners and cut losers.'},
   {n:'Warmup ramp', ic:'📈', cron:'0 9 * * 1', d:'Weekly: raises the daily send cap 8 to 30 while bounces stay healthy.'}
