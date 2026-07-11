@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Add sending inbox - LeadFyn</title>
+<style>
+body{font-family:system-ui,-apple-system,sans-serif;background:#0f0f0f;color:#eee;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
+.card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:28px;max-width:460px;width:90%}
+h1{font-size:18px;margin:0 0 6px}
+p{font-size:14px;color:#bbb;line-height:1.6}
+button{background:#2a78d6;color:#fff;border:0;border-radius:8px;padding:10px 16px;font-size:14px;cursor:pointer;margin-top:12px}
+a{color:#5aa2ea}.ok{color:#1baf7a}.err{color:#e24b4a}
+</style>
+</head>
+<body>
+<div class="card"><h1>Add sending inbox</h1><p id="msg">Loading...</p></div>
+<script>
+var ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kd3ZzcnR5am5hZGRyaWZhZnFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4ODMxMDgsImV4cCI6MjA5MzQ1OTEwOH0.7XoOKB74DGiXac3cfSSiyvREuWZ7qbQ2QbxE6d1rnlM';
+var BASE='https://ndwvsrtyjnaddrifafqk.supabase.co/rest/v1';
+var CID='dc076116-c6fa-4f27-ad91-cfbd2e871a48';
+var REDIRECT=location.origin+'/admin/add-inbox.html';
+var SCOPE='https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email';
+var msg=document.getElementById('msg');
+function tok(){var r=localStorage.getItem('sb-ndwvsrtyjnaddrifafqk-auth-token');return r?JSON.parse(r).access_token:null;}
+function creds(){var t=tok();return fetch(BASE+'/clients?id=eq.'+CID+'&select=gmail_client_id,gmail_client_secret',{headers:{apikey:ANON,Authorization:'Bearer '+t}}).then(function(r){return r.json();}).then(function(j){return j[0];});}
+function start(){
+  if(!tok()){msg.innerHTML='<span class="err">Please open your app and sign in first, then reopen this page.</span>';return;}
+  var params=new URLSearchParams(location.search);var code=params.get('code');
+  if(!code){
+    creds().then(function(c){
+      var url='https://accounts.google.com/o/oauth2/v2/auth?'+new URLSearchParams({client_id:c.gmail_client_id,redirect_uri:REDIRECT,response_type:'code',scope:SCOPE,access_type:'offline',prompt:'consent'}).toString();
+      msg.innerHTML='Click below, then sign in with the <b>new inbox</b> account (for example outreach@attoleads.com) and approve. If you see an unverified-app screen, choose Advanced then Continue.<br><button id="go">Connect a new inbox</button>';
+      document.getElementById('go').onclick=function(){location.href=url;};
+    });
+    return;
+  }
+  msg.textContent='Connecting...';
+  creds().then(function(c){
+    var body=new URLSearchParams({code:code,client_id:c.gmail_client_id,client_secret:c.gmail_client_secret,redirect_uri:REDIRECT,grant_type:'authorization_code'});
+    return fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body}).then(function(r){return r.json();}).then(function(tj){
+      if(!tj.refresh_token){msg.innerHTML='<span class="err">No refresh token returned. Go to myaccount.google.com/permissions for that inbox, remove AutoFlow v7, then try again.</span>';return;}
+      return fetch('https://www.googleapis.com/oauth2/v2/userinfo',{headers:{Authorization:'Bearer '+tj.access_token}}).then(function(r){return r.json();}).then(function(ui){
+        var email=(ui.email||'').toLowerCase();var t=tok();
+        return fetch(BASE+'/sending_inboxes?email=eq.'+encodeURIComponent(email)+'&select=id',{headers:{apikey:ANON,Authorization:'Bearer '+t}}).then(function(r){return r.json();}).then(function(ex){
+          if(ex.length){msg.innerHTML='<span class="ok">'+email+' is already connected.</span>';return;}
+          return fetch(BASE+'/sending_inboxes',{method:'POST',headers:{apikey:ANON,Authorization:'Bearer '+t,'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify({client_id:CID,email:email,gmail_refresh:tj.refresh_token,gmail_client_id:c.gmail_client_id,gmail_client_secret:c.gmail_client_secret,daily_cap:3,warmup_day:1,status:'warming',is_primary:false})}).then(function(ins){
+            if(ins.status===201||ins.status===204){msg.innerHTML='<span class="ok">Done. '+email+' added as a sending inbox (warming, 3/day). You can close this tab.</span>';history.replaceState({},'',REDIRECT);}
+            else{ins.text().then(function(tx){msg.innerHTML='<span class="err">Could not save ('+ins.status+'). '+tx.slice(0,140)+'</span>';});}
+          });
+        });
+      });
+    });
+  }).catch(function(e){msg.innerHTML='<span class="err">Error: '+e.message+'</span>';});
+}
+start();
+</script>
+</body>
+</html>
