@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sending Inboxes - LeadFyn</title>
+<style>
+body{font-family:system-ui,-apple-system,sans-serif;background:#0f0f0f;color:#eee;margin:0;padding:24px}
+.wrap{max-width:720px;margin:0 auto}
+.hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+h1{font-size:20px;margin:0}
+.btn{background:#2a78d6;color:#fff;text-decoration:none;border-radius:8px;padding:9px 14px;font-size:14px}
+.card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:16px;margin-bottom:12px}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:15px}
+.tag{font-size:11px;padding:2px 8px;border-radius:20px;background:#2a2a2a;color:#bbb}
+.stats{display:flex;flex-wrap:wrap;gap:18px;margin-top:12px;font-size:13px;color:#aaa}
+.stats b{color:#fff}
+.muted{color:#888;font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="hdr"><h1>Sending Inboxes</h1><a class="btn" href="/admin/add-inbox.html">+ Add inbox</a></div>
+<div id="list" class="muted">Loading...</div>
+<p class="muted" style="margin-top:16px">Each lead is permanently assigned to one inbox (by its ID), so no prospect is emailed twice. Both inboxes send new emails and follow-ups daily under their own caps.</p>
+</div>
+<script>
+var ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kd3ZzcnR5am5hZGRyaWZhZnFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4ODMxMDgsImV4cCI6MjA5MzQ1OTEwOH0.7XoOKB74DGiXac3cfSSiyvREuWZ7qbQ2QbxE6d1rnlM';
+var BASE='https://ndwvsrtyjnaddrifafqk.supabase.co/rest/v1';
+var CID='dc076116-c6fa-4f27-ad91-cfbd2e871a48';
+function tok(){var r=localStorage.getItem('sb-ndwvsrtyjnaddrifafqk-auth-token');return r?JSON.parse(r).access_token:null;}
+function load(){
+  var t=tok();var el=document.getElementById('list');
+  if(!t){el.textContent='Please sign in to the admin dashboard first, then reload.';return;}
+  var H={apikey:ANON,Authorization:'Bearer '+t};
+  fetch(BASE+'/sending_inboxes?client_id=eq.'+CID+'&order=is_primary.desc,created_at.asc&select=email,status,daily_cap,warmup_day,is_primary',{headers:H}).then(function(r){return r.json();}).then(function(inboxes){
+    var N=inboxes.length; if(!N){el.textContent='No inboxes yet. Click Add inbox.';return;}
+    var idx=function(id){return parseInt(id.replace(/-/g,'').slice(-6),16)%N;};
+    var today=new Date().toISOString().slice(0,10);
+    Promise.all([
+      fetch(BASE+'/outreach_log?client_id=eq.'+CID+'&status=eq.sent&sent_at=gte.'+today+'&select=lead_id',{headers:H}).then(function(r){return r.json();}),
+      fetch(BASE+'/leads?client_id=eq.'+CID+'&select=id',{headers:H}).then(function(r){return r.json();}),
+      fetch(BASE+'/outreach_log?client_id=eq.'+CID+'&status=eq.draft&select=lead_id',{headers:H}).then(function(r){return r.json();})
+    ]).then(function(res){
+      var sentToday=res[0],leads=res[1],drafts=res[2];
+      var draftIds={};drafts.forEach(function(d){draftIds[d.lead_id]=1;});
+      var draftLeadIds=Object.keys(draftIds);
+      var html=inboxes.map(function(ib,i){
+        var st=sentToday.filter(function(r){return idx(r.lead_id)===i;}).length;
+        var assigned=leads.filter(function(l){return idx(l.id)===i;}).length;
+        var pending=draftLeadIds.filter(function(id){return idx(id)===i;}).length;
+        var col=ib.status==='healthy'?'#1baf7a':(ib.status==='warming'?'#eda100':'#888');
+        return '<div class="card"><div class="row"><b>'+ib.email+'</b>'+(ib.is_primary?'<span class="tag">primary</span>':'')+'<span class="tag" style="background:'+col+'22;color:'+col+'">'+ib.status+'</span></div>'
+          +'<div class="stats"><span>Sent today <b>'+st+'</b> / '+ib.daily_cap+'</span><span>Daily cap <b>'+ib.daily_cap+'</b></span><span>Warmup day <b>'+(ib.warmup_day>=99?'done':ib.warmup_day)+'</b></span><span>Assigned leads <b>'+assigned+'</b></span><span>Pending to send <b>'+pending+'</b></span></div></div>';
+      }).join('');
+      el.innerHTML=html;
+    });
+  }).catch(function(e){el.textContent='Error: '+e.message;});
+}
+load();
+</script>
+</body>
+</html>
