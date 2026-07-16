@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Opens — LeadFyn</title>
+  <link rel="preconnect" href="https://ndwvsrtyjnaddrifafqk.supabase.co" crossorigin>
+  <link rel="modulepreload" href="/shared/auth.js">
+  <link rel="modulepreload" href="/shared/ui.js">
+  <link rel="stylesheet" href="/shared/attoleads-theme.css">
+</head>
+<body><div id="app">Loading…</div>
+<script type="module">
+import { injectLeadFynTheme, injectSharedCSS, adminNav } from '/shared/ui.js';
+import { requireAuth } from '/shared/auth.js';
+injectLeadFynTheme(); try{ requireAuth(); }catch(e){} injectSharedCSS();
+const CID='dc076116-c6fa-4f27-ad91-cfbd2e871a48';
+const ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kd3ZzcnR5am5hZGRyaWZhZnFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4ODMxMDgsImV4cCI6MjA5MzQ1OTEwOH0.7XoOKB74DGiXac3cfSSiyvREuWZ7qbQ2QbxE6d1rnlM';
+const BASE='https://ndwvsrtyjnaddrifafqk.supabase.co/rest/v1';
+
+document.getElementById('app').innerHTML = adminNav('Opens') +
+  '<main class="main"><div class="page-header"><h1 class="page-title">👀 Opens — warm leads</h1>'+
+  '<p class="page-sub">Every lead who opened one of your emails. These are your hottest prospects — follow them up first.</p></div>'+
+  '<div class="page-body"><div class="stats-grid" id="stat" style="margin-bottom:18px"></div>'+
+  '<div class="card"><div class="card-title">Opened your email</div><div id="tbl">Loading…</div></div></div></main>';
+
+function touchLabel(n){ return n>=3 ? '3+ times' : (n===2 ? 'Twice' : 'Once'); }
+function nextStep(n){
+  if(n>=3) return 'Call now — highly engaged';
+  if(n===2) return 'Phone call or LinkedIn DM';
+  return 'Second touch: call or re-share the demo';
+}
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmtDate(d){ try{ return new Date(d).toLocaleDateString(); }catch(e){ return '—'; } }
+
+(async function(){
+  try{
+    const raw = localStorage.getItem('sb-ndwvsrtyjnaddrifafqk-auth-token');
+    if(!raw){ document.getElementById('tbl').innerHTML='<div class="table-empty">Sign in to view opens.</div>'; return; }
+    const tok = JSON.parse(raw).access_token;
+    const H = { apikey:ANON, Authorization:'Bearer '+tok };
+    const rows = await fetch(BASE+'/outreach_log?client_id=eq.'+CID+'&status=eq.sent&select=lead_id,opened,sent_at,follow_up_seq,leads(business_name,email,phone,city,niche,demo_url,stage)&order=sent_at.desc&limit=4000',{headers:H}).then(r=>r.json());
+
+    const byLead = {};
+    (rows||[]).forEach(function(r){
+      if(!r.lead_id) return;
+      if(!byLead[r.lead_id]) byLead[r.lead_id] = { lead:r.leads||{}, touches:0, opens:0, lastSent:r.sent_at };
+      const g = byLead[r.lead_id];
+      g.touches++;
+      if(r.opened===true) g.opens++;
+      if(r.sent_at && (!g.lastSent || r.sent_at > g.lastSent)) g.lastSent = r.sent_at;
+    });
+
+    let opened = Object.values(byLead).filter(function(g){ return g.opens>0; });
+    opened.sort(function(a,b){ return (b.opens-a.opens) || ((b.lastSent||'')<(a.lastSent||'')?-1:1); });
+
+    document.getElementById('stat').innerHTML =
+      '<div class="stat-card"><div class="stat-icon">👀</div><div class="stat-value">'+opened.length+'</div><div class="stat-label">leads opened</div></div>'+
+      '<div class="stat-card"><div class="stat-icon">📞</div><div class="stat-value">'+opened.filter(g=>g.lead.phone).length+'</div><div class="stat-label">with a phone number</div></div>'+
+      '<div class="stat-card"><div class="stat-icon">🌐</div><div class="stat-value">'+opened.filter(g=>g.lead.demo_url).length+'</div><div class="stat-label">have a demo to show</div></div>';
+
+    if(!opened.length){ document.getElementById('tbl').innerHTML='<div class="table-empty">No opens tracked yet. As prospects open your emails, they will appear here.</div>'; return; }
+
+    var head = '<div class="table-wrap"><table class="data-table"><thead><tr>'+
+      '<th>Business</th><th>Contact</th><th>City / niche</th><th>Contacted</th><th>Opened</th><th>Last sent</th><th>Demo</th><th>Suggested next step</th></tr></thead><tbody>';
+    var body = opened.map(function(g){
+      var L=g.lead;
+      var contact = esc(L.email||'') + (L.phone? '<br><span style="color:var(--color-text-muted)">'+esc(L.phone)+'</span>' : '');
+      var demo = L.demo_url ? '<a href="'+L.demo_url+'" target="_blank" style="color:var(--color-accent)">open</a>' : '—';
+      return '<tr>'+
+        '<td style="font-weight:600">'+esc(L.business_name||'—')+'</td>'+
+        '<td style="font-size:13px">'+contact+'</td>'+
+        '<td style="font-size:13px">'+esc(L.city||'')+' · '+esc(L.niche||'')+'</td>'+
+        '<td>'+touchLabel(g.touches)+'</td>'+
+        '<td><span style="color:var(--green,#1a7f1a);font-weight:700">'+g.opens+'×</span></td>'+
+        '<td style="font-size:13px">'+fmtDate(g.lastSent)+'</td>'+
+        '<td>'+demo+'</td>'+
+        '<td style="font-size:13px;color:var(--color-accent)">'+nextStep(g.touches)+'</td>'+
+      '</tr>';
+    }).join('');
+    document.getElementById('tbl').innerHTML = head + body + '</tbody></table></div>';
+  }catch(e){
+    document.getElementById('tbl').innerHTML='<div class="table-empty">Could not load opens: '+(e&&e.message||e)+'</div>';
+  }
+})();
+</script>
+</body></html>
+
