@@ -8,6 +8,8 @@ import { getAdminClient, CORS } from "../_shared/helpers.ts";
 
 const ANTHROPIC = "https://api.anthropic.com/v1/messages";
 const VERCEL    = "https://api.vercel.com";
+// Try these models in order until one succeeds (handles model deprecations).
+const MODELS = ["claude-sonnet-4-5", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -30,9 +32,9 @@ Deno.serve(async (req) => {
 
   console.log(`[generate-site] Generating site for ${lead.business_name}`);
 
-  // ── Step 1: Claude generates the HTML ────────────────────────
-  const html = await generateHTML(client.claude_key, lead);
-  if (!html) return new Response(JSON.stringify({ error: "Claude failed to generate HTML" }), { status: 500, headers: CORS });
+  // ── Step 1: Claude generates the HTML ───────────────────────
+  const { html, model_used, last_error } = await generateHTML(client.claude_key, lead);
+  if (!html) return new Response(JSON.stringify({ error: "Claude failed to generate HTML", detail: last_error }), { status: 500, headers: CORS });
 
   // ── Step 2: Deploy to Vercel (if token exists) ────────────────
   let demoUrl: string | null = null;
@@ -51,19 +53,18 @@ Deno.serve(async (req) => {
     ok: true,
     demo_url: demoUrl,
     deployed: !!demoUrl,
+    model_used,
     html_length: html.length
   }), { headers: { ...CORS, "Content-Type": "application/json" } });
 });
 
 // ── Claude HTML generator ─────────────────────────────────────
-async function generateHTML(claudeKey: string, lead: Record<string, unknown>): Promise<string | null> {
+async function generateHTML(claudeKey: string, lead: Record<string, unknown>): Promise<{ html: string | null, model_used: string | null, last_error: string | null }> {
   const bizName  = lead.business_name as string || "Your Business";
   const niche    = lead.niche        as string || "Local Business";
   const city     = lead.city         as string || "your area";
   const phone    = lead.phone        as string || "";
   const email    = lead.email        as string || "";
-  const website  = lead.website      as string || "";
-  const score    = lead.score        as number || 5;
   const painPoints = (lead.pain_points as string[])?.join(", ") || "improve online presence";
 
   const prompt = `You are an expert web designer. Generate a COMPLETE, professional, modern single-page HTML website for this business.
@@ -92,37 +93,40 @@ Requirements:
 
 Output ONLY the raw HTML. No explanation, no markdown, no code blocks. Start with <!DOCTYPE html>`;
 
-  try {
-    const res = await fetch(ANTHROPIC, {
-      method: "POST",
-      headers: {
-        "x-api-key": claudeKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 8000,
-        messages: [{ role: "user", content: prompt }]
-      })
-    });
+  let lastError: string | null = null;
+  for (const model of MODELS) {
+    try {
+      const res = await fetch(ANTHROPIC, {
+        method: "POST",
+        headers: {
+          "x-api-key": claudeKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 8000,
+          messages: [{ role: "user", content: prompt }]
+        })
+      });
 
-    if (!res.ok) {
-      console.error("[generate-site] Claude error:", res.status);
-      return null;
+      if (!res.ok) {
+        lastError = model + ":" + res.status;
+        console.error("[generate-site] Claude error:", model, res.status);
+        continue; // try next model
+      }
+
+      const data = await res.json();
+      let html = data.content?.[0]?.text || "";
+      html = html.replace(/^```html?\n?/i, "").replace(/\n?```$/i, "").trim();
+      if (!html.startsWith("<!DOCTYPE")) { lastError = model + ":no_doctype"; continue; }
+      return { html, model_used: model, last_error: null };
+    } catch (e) {
+      lastError = model + ":" + String(e);
+      console.error("[generate-site] Claude fetch error:", model, String(e));
     }
-
-    const data = await res.json();
-    let html = data.content?.[0]?.text || "";
-
-    // Strip any accidental markdown code fences
-    html = html.replace(/^```html?\n?/i, "").replace(/\n?```$/i, "").trim();
-    if (!html.startsWith("<!DOCTYPE")) return null;
-    return html;
-  } catch (e) {
-    console.error("[generate-site] Claude fetch error:", String(e));
-    return null;
   }
+  return { html: null, model_used: null, last_error: lastError };
 }
 
 // ── Vercel deployer — creates deployment then polls until READY ──
@@ -214,7 +218,6 @@ async function deployToVercel(
         }
       }
 
-      // Timed out — return URL anyway (deployment likely still building)
       console.warn(`[generate-site] Timed out waiting for READY — returning URL anyway: ${finalUrl}`);
     }
 
