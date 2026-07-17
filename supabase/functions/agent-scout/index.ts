@@ -1,12 +1,13 @@
 // AutoFlow v7 — agent-scout
 // Picks a high-fit niche + US city (scoreboard + season, no repeats in 3d). Optionally scrapes.
+// WIDENED: ~40 niches x ~45 cities for much broader coverage.
 // POST { dry_run?: boolean } — dry_run defaults TRUE (just returns the pick).
 const SUPA="https://ndwvsrtyjnaddrifafqk.supabase.co";
 const CID="dc076116-c6fa-4f27-ad91-cfbd2e871a48";
 const SRK=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||"";
 const CORS:Record<string,string>={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"*","Content-Type":"application/json"};
-const NICHES=["HVAC contractor","Plumber","Roofing contractor","Electrician","Dentist","Med spa","Chiropractor","Law firm","Personal injury attorney","Auto repair shop","Pest control","Landscaper","Pool service","Real estate agency","Veterinarian"];
-const CITIES=[["Phoenix","AZ"],["Austin","TX"],["Dallas","TX"],["Houston","TX"],["Denver","CO"],["Charlotte","NC"],["Tampa","FL"],["Nashville","TN"],["Columbus","OH"],["Las Vegas","NV"],["San Diego","CA"],["Atlanta","GA"],["Kansas City","MO"],["Salt Lake City","UT"],["Raleigh","NC"]];
+const NICHES=["HVAC contractor","Plumber","Roofing contractor","Electrician","Garage door repair","Window installation","Fencing contractor","Concrete contractor","Home remodeling contractor","Painter","Tree service","Landscaper","Pool service","Pest control","Junk removal","Moving company","Cleaning service","Solar installer","Auto repair shop","Auto detailing","Dentist","Cosmetic dentist","Orthodontist","Med spa","Chiropractor","Physical therapy","Optometrist","Veterinarian","Law firm","Personal injury attorney","Accountant / CPA","Insurance agency","Financial advisor","Real estate agency","Gym / fitness studio","Yoga studio","Hair salon","Nail salon","Barber shop","Restaurant","Catering","Wedding photographer","Event venue"];
+const CITIES=[["Phoenix","AZ"],["Tucson","AZ"],["Austin","TX"],["Dallas","TX"],["Fort Worth","TX"],["Houston","TX"],["San Antonio","TX"],["El Paso","TX"],["Denver","CO"],["Colorado Springs","CO"],["Charlotte","NC"],["Raleigh","NC"],["Greensboro","NC"],["Tampa","FL"],["Orlando","FL"],["Jacksonville","FL"],["Miami","FL"],["Nashville","TN"],["Memphis","TN"],["Columbus","OH"],["Cincinnati","OH"],["Cleveland","OH"],["Las Vegas","NV"],["Reno","NV"],["San Diego","CA"],["Sacramento","CA"],["Fresno","CA"],["Atlanta","GA"],["Kansas City","MO"],["St. Louis","MO"],["Salt Lake City","UT"],["Boise","ID"],["Portland","OR"],["Seattle","WA"],["Spokane","WA"],["Albuquerque","NM"],["Oklahoma City","OK"],["Tulsa","OK"],["Indianapolis","IN"],["Minneapolis","MN"],["Milwaukee","WI"],["Omaha","NE"],["Louisville","KY"],["Birmingham","AL"],["Richmond","VA"]];
 function sb(p:string){return fetch(SUPA+"/rest/v1"+p,{headers:{apikey:SRK,Authorization:"Bearer "+SRK}});}
 Deno.serve(async(req)=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:CORS});
@@ -29,4 +30,3 @@ Deno.serve(async(req)=>{
   }
   return new Response(JSON.stringify({ok:true,dry_run:dry,pick,scraped}),{headers:CORS});
 });
-
