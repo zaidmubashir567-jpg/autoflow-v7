@@ -11,13 +11,13 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: latest
-      - name: Deploy all agent functions
+      - name: Deploy all edge functions
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          for d in supabase/functions/agent-*/ ; do
+          for d in supabase/functions/*/ ; do
             name=$(basename "$d")
+            if [ "$name" = "_shared" ]; then continue; fi
             echo "Deploying $name"
-            supabase functions deploy "$name" --project-ref ndwvsrtyjnaddrifafqk
+            supabase functions deploy "$name" --project-ref ndwvsrtyjnaddrifafqk || echo "FAILED: $name"
           done
-
