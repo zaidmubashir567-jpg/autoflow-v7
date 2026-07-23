@@ -5,7 +5,7 @@
 const SUPA = "https://ndwvsrtyjnaddrifafqk.supabase.co";
 const CID  = "dc076116-c6fa-4f27-ad91-cfbd2e871a48";
 const SRK  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-const BOOK = "https://attoleads.com/book";
+const BOOK = "https://attoleads.com/public/book.html";
 const CORS: Record<string,string> = { "Access-Control-Allow-Origin":"*", "Access-Control-Allow-Headers":"*", "Content-Type":"application/json" };
 const ROLE = new Set(["info","sales","contact","office","admin","support","hello","service","dispatch","team","help","inquiries","customercare","bids","hr","everything","inquiry","marketing","billing","accounts","jobs","careers"]);
 const FOOTER = "\n\n--\nZaid Mubashir\nAttoLeads — done-for-you marketing for local businesses\nWebsites, AI receptionists, SEO, Google & social\nhttps://attoleads.com | sales@attoleads.com\n30 N Gould St, Sheridan, WY 82801\n\nIf you'd rather not hear from me, just reply \"unsubscribe\" and I won't email you again.";
