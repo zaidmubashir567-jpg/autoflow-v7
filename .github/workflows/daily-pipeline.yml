@@ -1,0 +1,20 @@
+name: Daily Pipeline
+# Truly-live scheduler: runs the pipeline on GitHub's servers so it no longer
+# depends on any assistant session being open.
+on:
+  schedule:
+    - cron: '0 15 * * *'   # 15:00 UTC daily (~8am Phoenix / ~8pm Karachi)
+  workflow_dispatch: {}
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run daily agents (compose -> warmup -> send -> reply)
+        run: |
+          BASE="https://ndwvsrtyjnaddrifafqk.supabase.co/functions/v1"
+          ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kd3ZzcnR5am5hZGRyaWZhZnFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4ODMxMDgsImV4cCI6MjA5MzQ1OTEwOH0.7XoOKB74DGiXac3cfSSiyvREuWZ7qbQ2QbxE6d1rnlM"
+          for fn in agent-compose agent-warmup agent-send agent-reply; do
+            echo "== $fn =="
+            curl -s -X POST "$BASE/$fn" -H "apikey: $ANON" -H "Authorization: Bearer $ANON" -H "Content-Type: application/json" -d '{"dry_run":false}'
+            echo ""
+          done
