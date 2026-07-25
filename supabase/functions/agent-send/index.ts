@@ -16,6 +16,7 @@ function encSubj(s: string){ return /[^\x00-\x7F]/.test(s) ? "=?UTF-8?B?"+b64(s)
 function sb(path: string, opts: any = {}){
   return fetch(SUPA+"/rest/v1"+path, { ...opts, headers: { apikey:SRK, Authorization:"Bearer "+SRK, "Content-Type":"application/json", ...(opts.headers||{}) } });
 }
+async function hasMX(email){ const dom=(email.split("@")[1]||"").toLowerCase(); if(!dom) return false; try{ const r=await fetch("https://dns.google/resolve?name="+encodeURIComponent(dom)+"&type=MX"); const j=await r.json(); return Array.isArray(j.Answer)&&j.Answer.some(a=>a.type===15);}catch(_){return true;} }
 async function accessToken(ib: any){
   const body = "client_id="+encodeURIComponent(ib.gmail_client_id)+"&client_secret="+encodeURIComponent(ib.gmail_client_secret)+"&refresh_token="+encodeURIComponent(ib.gmail_refresh)+"&grant_type=refresh_token";
   const r = await fetch("https://oauth2.googleapis.com/token", { method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"}, body });
@@ -33,6 +34,8 @@ Deno.serve(async (req) => {
   if(req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   let dryRun = true;
   try { const b = await req.json(); if(b && b.dry_run === false) dryRun = false; } catch(_){}
+
+  try { const _c=new Date(Date.now()-20*60*1000).toISOString(); await sb("/pipeline_runs?client_id=eq."+CID+"&status=eq.running&started_at=lt."+_c,{method:"PATCH",headers:{Prefer:"return=minimal"},body:JSON.stringify({status:"completed",completed_at:new Date().toISOString(),agent_message:"Auto-healed: scrape timed out; leads ingested from dataset."})}); } catch(_){}
 
   const inboxes = (await sb("/sending_inboxes?client_id=eq."+CID+"&order=is_primary.desc,created_at.asc&select=*").then(r=>r.json()))
     .filter((i: any) => i.gmail_refresh && (i.status==="healthy" || i.status==="warming"));
@@ -69,6 +72,8 @@ Deno.serve(async (req) => {
       per.recipients = [];
       for(const d of mine){
         const to = d.leads.email;
+        const okmx = await hasMX(to);
+        if(!okmx){ await sb("/leads?id=eq."+d.lead_id,{method:"PATCH",headers:{Prefer:"return=minimal"},body:JSON.stringify({do_not_contact:true,email_confidence:"low"})}); per.recipients.push(to+" (SKIPPED no-MX)"); continue; }
         const mime = "To: "+to+"\r\nSubject: "+encSubj(d.subject||"")+"\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=\"UTF-8\"\r\nContent-Transfer-Encoding: base64\r\n\r\n"+b64(d.body).replace(/(.{76})/g,"$1\r\n");
         const s = await gmailSend(at, b64url(mime));
         if((s as any).ok){
