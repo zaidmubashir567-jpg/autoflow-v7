@@ -19,7 +19,7 @@ async function handleInbound(body: Record<string, unknown>) {
   const biz=(body.business??'').toString().slice(0,200);
   const phone=(body.phone??'').toString().slice(0,60);
   const msg=(body.message??'').toString().slice(0,4000);
-  try { await sb.from('leads').insert({ client_id: ATTO_CID, business_name: biz||name||'Website inquiry', email: email||null, phone: phone||null, niche:'Website inquiry', stage:'new', do_not_contact:true, score_reason:'INBOUND from attoleads.com contact form: '+msg }); } catch(_e){}
+  try { await sb.from('leads').insert({ client_id: ATTO_CID, business_name: biz||name||'Website inquiry', email: email||null, phone: phone||null, niche:'Website inquiry', niche_normalized:'website inquiry', stage:'new', do_not_contact:true, score_reason:'INBOUND from attoleads.com contact form: '+msg }); } catch(_e){}
   let emailed=false;
   try {
     const { data: ib } = await sb.from('sending_inboxes').select('gmail_refresh,gmail_client_id,gmail_client_secret').eq('client_id', ATTO_CID).eq('is_primary', true).single();
