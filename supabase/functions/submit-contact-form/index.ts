@@ -11,11 +11,38 @@ import { getAdminClient, callAI, ok, err, CORS } from '../_shared/helpers.ts';
 
 const LOB_API = 'https://api.lob.com/v1/postcards';
 const SCORE_THRESHOLD = 8; // was 85 in detect-channels — stored as 0-10
+const ATTO_CID = "dc076116-c6fa-4f27-ad91-cfbd2e871a48";
+async function handleInbound(body: Record<string, unknown>) {
+  const sb = getAdminClient();
+  const name=(body.name??'').toString().slice(0,200);
+  const email=(body.email??'').toString().slice(0,200);
+  const biz=(body.business??'').toString().slice(0,200);
+  const phone=(body.phone??'').toString().slice(0,60);
+  const msg=(body.message??'').toString().slice(0,4000);
+  try { await sb.from('leads').insert({ client_id: ATTO_CID, business_name: biz||name||'Website inquiry', email: email||null, phone: phone||null, niche:'Website inquiry', stage:'new', do_not_contact:true, score_reason:'INBOUND from attoleads.com contact form: '+msg }); } catch(_e){}
+  let emailed=false;
+  try {
+    const { data: ib } = await sb.from('sending_inboxes').select('gmail_refresh,gmail_client_id,gmail_client_secret').eq('client_id', ATTO_CID).eq('is_primary', true).single();
+    if (ib && ib.gmail_refresh) {
+      const tk = await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'client_id='+encodeURIComponent(ib.gmail_client_id)+'&client_secret='+encodeURIComponent(ib.gmail_client_secret)+'&refresh_token='+encodeURIComponent(ib.gmail_refresh)+'&grant_type=refresh_token'}).then(r=>r.ok?r.json():null);
+      if (tk && tk.access_token) {
+        const subject='NEW website inquiry: '+(biz||name||email);
+        const textBody=['New inbound lead from the attoleads.com contact form:','','Name: '+name,'Business: '+biz,'Email: '+email,'Phone: '+phone,'','Message:',msg,'','-- Reply to this person directly.'].join('\n');
+        const rawMail='From: AttoLeads <sales@attoleads.com>\r\nTo: sales@attoleads.com\r\nReply-To: '+(email||'sales@attoleads.com')+'\r\nSubject: '+subject+'\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n'+textBody;
+        const b64u=btoa(unescape(encodeURIComponent(rawMail))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+        const sr=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{method:'POST',headers:{Authorization:'Bearer '+tk.access_token,'Content-Type':'application/json'},body:JSON.stringify({raw:b64u})});
+        emailed=sr.ok;
+      }
+    }
+  } catch(_e){}
+  return ok({ inbound:true, stored:true, owner_notified:emailed });
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   const body = await req.json();
+  if (body && (body.source === 'landing_page' || (body.email && !body.mode))) { return await handleInbound(body); }
   const { client_id, mode, lead_ids } = body;
   if (!client_id || !mode || !lead_ids?.length) return err('client_id, mode, and lead_ids required');
   if (!['contact_form', 'direct_mail'].includes(mode)) return err('mode must be contact_form or direct_mail');
