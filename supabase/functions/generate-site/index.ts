@@ -28,9 +28,7 @@ Deno.serve(async (req) => {
   const html = buildHTML(lead);
 
   let demoUrl: string | null = null;
-  if (client?.vercel_token) {
-    demoUrl = await deployToVercel(client.vercel_token, lead, html);
-  }
+  demoUrl = await hostOnStorage(sb, lead_id, html);
 
   const update: Record<string, unknown> = { demo_deployed_at: new Date().toISOString() };
   if (demoUrl) update.demo_url = demoUrl;
@@ -181,4 +179,17 @@ async function deployToVercel(token: string, lead: Record<string, unknown>, html
     }
     return finalUrl;
   } catch (e) { console.error("[generate-site] Vercel fetch error:", String(e)); return null; }
+}
+
+
+async function hostOnStorage(sb: any, leadId: string, html: string): Promise<string | null> {
+  try {
+    await sb.storage.createBucket("demos", { public: true }).catch(() => {});
+    const path = leadId + ".html";
+    const bytes = new TextEncoder().encode(html);
+    const { error } = await sb.storage.from("demos").upload(path, bytes, { contentType: "text/html; charset=utf-8", upsert: true, cacheControl: "3600" });
+    if (error) { console.error("storage upload:", error.message); return null; }
+    const { data } = sb.storage.from("demos").getPublicUrl(path);
+    return data && data.publicUrl ? data.publicUrl : null;
+  } catch (e) { console.error("host error:", String(e)); return null; }
 }
