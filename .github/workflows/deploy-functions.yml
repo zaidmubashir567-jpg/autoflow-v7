@@ -19,5 +19,7 @@ jobs:
             name=$(basename "$d")
             if [ "$name" = "_shared" ]; then continue; fi
             echo "Deploying $name"
-            supabase functions deploy "$name" --project-ref ndwvsrtyjnaddrifafqk || echo "FAILED: $name"
+            FLAGS=""
+            if [ "$name" = "demo" ]; then FLAGS="--no-verify-jwt"; fi
+            supabase functions deploy "$name" --project-ref ndwvsrtyjnaddrifafqk $FLAGS || echo "FAILED: $name"
           done
