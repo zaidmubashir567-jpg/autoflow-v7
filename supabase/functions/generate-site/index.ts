@@ -189,7 +189,6 @@ async function hostOnStorage(sb: any, leadId: string, html: string): Promise<str
     const blob = new Blob([html], { type: "text/html; charset=utf-8" });
     const { error } = await sb.storage.from("demos").upload(path, blob, { contentType: "text/html; charset=utf-8", upsert: true, cacheControl: "3600" });
     if (error) { console.error("storage upload:", error.message); return null; }
-    const { data } = sb.storage.from("demos").getPublicUrl(path);
-    return data && data.publicUrl ? data.publicUrl : null;
+    return "https://ndwvsrtyjnaddrifafqk.supabase.co/functions/v1/demo?id=" + leadId;
   } catch (e) { console.error("host error:", String(e)); return null; }
 }
