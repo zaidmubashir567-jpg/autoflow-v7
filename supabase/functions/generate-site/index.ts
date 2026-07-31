@@ -186,8 +186,8 @@ async function hostOnStorage(sb: any, leadId: string, html: string): Promise<str
   try {
     await sb.storage.createBucket("demos", { public: true }).catch(() => {});
     const path = leadId + ".html";
-    const bytes = new TextEncoder().encode(html);
-    const { error } = await sb.storage.from("demos").upload(path, bytes, { contentType: "text/html; charset=utf-8", upsert: true, cacheControl: "3600" });
+    const blob = new Blob([html], { type: "text/html; charset=utf-8" });
+    const { error } = await sb.storage.from("demos").upload(path, blob, { contentType: "text/html; charset=utf-8", upsert: true, cacheControl: "3600" });
     if (error) { console.error("storage upload:", error.message); return null; }
     const { data } = sb.storage.from("demos").getPublicUrl(path);
     return data && data.publicUrl ? data.publicUrl : null;
