@@ -1,19 +1,22 @@
-import { getAdminClient, CORS } from "../_shared/helpers.ts";
+import { getAdminClient } from "../_shared/helpers.ts";
 
-// Public demo server: returns a lead's stored demo HTML with the correct
-// text/html content-type so it renders as a real webpage.
+// Public demo server: returns a lead's stored demo HTML as real text/html.
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
-  const url = new URL(req.url);
-  const id = url.searchParams.get("id");
-  if (!id) return new Response("Missing id", { status: 400, headers: { ...CORS, "Content-Type": "text/plain" } });
+  const h = new Headers();
+  h.set("Access-Control-Allow-Origin", "*");
+  if (req.method === "OPTIONS") { h.set("Access-Control-Allow-Headers", "*"); return new Response("ok", { headers: h }); }
+  const id = new URL(req.url).searchParams.get("id");
+  if (!id) { h.set("Content-Type", "text/plain"); return new Response("Missing id", { status: 400, headers: h }); }
   try {
     const sb = getAdminClient();
     const { data, error } = await sb.storage.from("demos").download(id + ".html");
-    if (error || !data) return new Response("Demo not found", { status: 404, headers: { ...CORS, "Content-Type": "text/plain" } });
+    if (error || !data) { h.set("Content-Type", "text/plain"); return new Response("Demo not found", { status: 404, headers: h }); }
     const html = await data.text();
-    return new Response(html, { headers: { ...CORS, "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300" } });
+    h.set("Content-Type", "text/html; charset=utf-8");
+    h.set("Cache-Control", "public, max-age=300");
+    return new Response(html, { headers: h });
   } catch (e) {
-    return new Response("Error: " + String(e), { status: 500, headers: { ...CORS, "Content-Type": "text/plain" } });
+    h.set("Content-Type", "text/plain");
+    return new Response("Error: " + String(e), { status: 500, headers: h });
   }
 });
