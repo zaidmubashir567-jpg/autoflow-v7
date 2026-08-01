@@ -23,9 +23,9 @@ async function bookUrlFor(leadId){
       const ins = await sb("/meetings", { method:"POST", headers:{ Prefer:"return=representation" }, body: JSON.stringify({ client_id:CID, lead_id:leadId, status:"pending" }) }).then(r=>r.json());
       tok = ins && ins[0] && ins[0].booking_token;
     }
-    if(tok) return BOOK+"?t="+tok;
+    if(tok) return "https://ndwvsrtyjnaddrifafqk.supabase.co/functions/v1/demo?lead="+leadId+"&to="+encodeURIComponent(BOOK+"?t="+tok);
   } catch(_){}
-  return BOOK;
+  return "https://ndwvsrtyjnaddrifafqk.supabase.co/functions/v1/demo?lead="+leadId+"&to="+encodeURIComponent(BOOK);
 }
 function compose(L, bookUrl){
   const fn = firstName(L.owner_name);
