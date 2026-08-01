@@ -256,7 +256,7 @@ document.body.appendChild(modalEl);
 window.loadMeetings = async function() {
   const statusFilter = document.getElementById('filterStatus').value;
   let url = `${SUPABASE_URL}/rest/v1/meetings?client_id=eq.${clientId}&order=booked_at.asc&select=*,leads(business_name,niche,city)`;
-  url += statusFilter ? `&status=eq.${statusFilter}` : `&status=in.(pending,confirmed)`;
+  url += statusFilter ? `&status=eq.${statusFilter}` : `&status=eq.confirmed`;
 
   try {
     const res = await fetch(url, {
