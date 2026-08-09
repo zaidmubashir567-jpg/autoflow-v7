@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Website preview</title></head>
+<body style="margin:0;font-family:-apple-system,Segoe UI,Roboto,sans-serif">
+<div id="l" style="padding:48px;text-align:center;color:#555">Loading your preview…</div>
+<script>
+(function(){
+  var id=new URLSearchParams(location.search).get("id");
+  var SUPA="https://ndwvsrtyjnaddrifafqk.supabase.co";
+  if(!id){document.getElementById("l").textContent="No preview id.";return;}
+  fetch(SUPA+"/storage/v1/object/public/demos/"+encodeURIComponent(id)+".html",{cache:"no-store"})
+   .then(function(r){if(!r.ok)throw 0;return r.text();})
+   .then(function(html){document.open();document.write(html);document.close();})
+   .catch(function(){document.getElementById("l").textContent="Preview not available yet.";});
+})();
+</script>
+</body></html>
