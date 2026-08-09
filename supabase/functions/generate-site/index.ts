@@ -189,6 +189,6 @@ async function hostOnStorage(sb: any, leadId: string, html: string): Promise<str
     const blob = new Blob([html], { type: "text/html; charset=utf-8" });
     const { error } = await sb.storage.from("demos").upload(path, blob, { contentType: "text/html; charset=utf-8", upsert: true, cacheControl: "3600" });
     if (error) { console.error("storage upload:", error.message); return null; }
-    return "https://ndwvsrtyjnaddrifafqk.supabase.co/functions/v1/demo?id=" + leadId;
+    return "https://autoflow-v7.vercel.app/d.html?id=" + leadId;
   } catch (e) { console.error("host error:", String(e)); return null; }
 }
