@@ -6,11 +6,18 @@
 (function(){
   var id=new URLSearchParams(location.search).get("id");
   var SUPA="https://ndwvsrtyjnaddrifafqk.supabase.co";
+  var CID="dc076116-c6fa-4f27-ad91-cfbd2e871a48";
+  var ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kd3ZzcnR5am5hZGRyaWZhZnFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4ODMxMDgsImV4cCI6MjA5MzQ1OTEwOH0.7XoOKB74DGiXac3cfSSiyvREuWZ7qbQ2QbxE6d1rnlM";
   if(!id){document.getElementById("l").textContent="No preview id.";return;}
-  fetch(SUPA+"/storage/v1/object/public/demos/"+encodeURIComponent(id)+".html",{cache:"no-store"})
-   .then(function(r){if(!r.ok)throw 0;return r.text();})
-   .then(function(html){document.open();document.write(html);document.close();})
-   .catch(function(){document.getElementById("l").textContent="Preview not available yet.";});
+  function render(html){document.open();document.write(html);document.close();}
+  function load(){ return fetch(SUPA+"/storage/v1/object/public/demos/"+encodeURIComponent(id)+".html?cb="+Date.now(),{cache:"no-store"}).then(function(r){if(!r.ok)throw 0;return r.text();}); }
+  load().then(render).catch(function(){
+    document.getElementById("l").textContent="Building your preview…";
+    fetch(SUPA+"/functions/v1/generate-site",{method:"POST",headers:{apikey:ANON,Authorization:"Bearer "+ANON,"Content-Type":"application/json"},body:JSON.stringify({lead_id:id,client_id:CID})})
+     .then(function(){return new Promise(function(res){setTimeout(res,2800);});})
+     .then(load).then(render)
+     .catch(function(){document.getElementById("l").textContent="Preview not available.";});
+  });
 })();
 </script>
 </body></html>
